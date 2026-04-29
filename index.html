@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Connection Prototype v0</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; height: 100vh; overflow: hidden; background: #1a1d23; color: #e8e8e8; user-select: none; }
+  #app { display: grid; grid-template-rows: 1fr; grid-template-columns: 64px 1fr; height: 100vh; }
+  #top-palette { position: fixed; bottom: 16px; left: 25%; right: 25%; background: #232730; border: 1px solid #333; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; z-index: 6; }
+  #tabs { display: flex; gap: 4px; padding: 6px 12px 0; align-items: center; }
+  .tab { padding: 6px 14px; background: #2c313c; border: none; color: #aaa; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 12px; }
+  .tab.active { background: #3a4150; color: #fff; }
+  #palette-items { display: flex; gap: 10px; padding: 8px 12px; align-items: center; min-height: 60px; flex-wrap: wrap; }
+  .palette-item { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: grab; border-radius: 6px; background: #2c313c; position: relative; transition: outline 0.1s; }
+  .palette-item.in-use { opacity: 0.5; }
+  .palette-item:hover { outline: 2px solid #4a90e2; }
+  .swatch-circle { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; }
+  .swatch-square { width: 30px; height: 30px; border-radius: 0; border: 2px solid #fff; background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px); background-size: 5px 5px; }
+  #left-tools { background: #232730; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 6px; padding: 10px 8px; }
+  .tool-btn { width: 48px; height: 48px; background: #2c313c; border: none; color: #ccc; cursor: pointer; border-radius: 6px; font-size: 11px; padding: 4px; line-height: 1.1; }
+  .tool-btn.active { background: #4a90e2; color: #fff; }
+  .tool-btn:hover:not(.active) { background: #3a4150; }
+  #canvas-container { position: relative; background: #0f1115; overflow: hidden; }
+  #canvas { width: 100%; height: 100%; }
+  #property-window { position: absolute; top: 110px; right: 12px; width: 240px; background: #232730; border: 1px solid #444; border-radius: 8px; padding: 12px; z-index: 10; }
+  #property-window h3 { font-size: 12px; margin-bottom: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
+  #property-window .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  #property-window label { font-size: 12px; color: #ccc; }
+  #property-window input[type=color] { width: 44px; height: 28px; border: none; background: none; cursor: pointer; padding: 0; }
+  #property-window input[type=number] { width: 64px; padding: 4px 6px; background: #1a1d23; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 12px; }
+  #property-window button.close { position: absolute; top: 6px; right: 8px; background: none; border: none; color: #777; cursor: pointer; font-size: 18px; }
+  #ghost { position: fixed; pointer-events: none; z-index: 100; opacity: 0.85; }
+  #confirm-dialog { position: fixed; background: #232730; border: 1px solid #555; padding: 8px 10px; border-radius: 6px; z-index: 50; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
+  #confirm-dialog button:hover { background: #4a90e2; }
+  .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
+  #mode-label { position: absolute; top: 80px; left: 16px; color: rgba(255,255,255,0.10); font-size: 56px; font-weight: 800; letter-spacing: 1px; pointer-events: none; line-height: 1; text-transform: uppercase; }
+  #worker-portraits { position: absolute; top: 12px; left: 12px; display: flex; gap: 10px; z-index: 5; align-items: flex-start; }
+  .portrait-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+  .portrait { width: 52px; height: 52px; border-radius: 10px; border: 3px solid rgba(255,255,255,0.25); position: relative; transition: all 0.12s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); background-size: cover; background-position: center top; overflow: hidden; }
+  .portrait-wrap:hover .portrait { border-color: rgba(255,255,255,0.6); }
+  .portrait-wrap.selected .portrait { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.4); }
+  .portrait .cap-badge { position: absolute; bottom: -4px; right: -4px; background: #232730; color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 8px; border: 1px solid #444; line-height: 1; z-index: 2; }
+  .portrait-name { color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center; letter-spacing: 0.4px; pointer-events: none; }
+  /* ===== DEBUG PANEL ===== */
+  #debug-panel {
+    position: fixed; right: 0; top: 0; bottom: 0; width: 280px;
+    background: #2b2b2b; border-left: 1px solid #1c1c1c;
+    z-index: 20; display: flex; flex-direction: column;
+    transform: translateX(280px); transition: transform 0.18s ease;
+    color: #ddd;
+  }
+  #debug-panel #debug-panel-header { border-bottom-color: #1c1c1c; color: #888; }
+  #debug-panel #debug-tab-bar { border-bottom-color: #1c1c1c; }
+  #debug-panel .debug-tab { color: #888; }
+  #debug-panel .debug-tab.active { color: #fff; }
+  #debug-panel #debug-mode-btns { border-bottom-color: #1c1c1c; }
+  #debug-panel .dbg-mode-btn { background: #353535; border-color: #444; color: #bbb; }
+  #debug-panel .dbg-mode-btn:hover { color: #fff; border-color: #666; }
+  #debug-panel .dbg-mode-btn.active { background: #1e3a5f; color: #7ab4f5; border-color: #4a90e2; }
+  #debug-panel #debug-table thead th { color: #888; border-bottom-color: #1c1c1c; }
+  #debug-panel .dbg-type-row td { border-bottom-color: #1c1c1c; }
+  #debug-panel .dbg-type-row:hover td { background: #353535; }
+  #debug-panel .dbg-inst-row td { border-bottom-color: #1c1c1c; background: #262626; }
+  #debug-panel .dbg-label { color: #ddd; }
+  #debug-panel .dbg-inst-label { color: #888; }
+  #debug-panel .dbg-count { color: #777; }
+  #debug-panel.open { transform: translateX(0); }
+  #debug-toggle {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+    background: #232730; border: 1px solid #333; border-right: none;
+    color: #777; cursor: pointer; padding: 14px 5px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    z-index: 21; border-radius: 6px 0 0 6px;
+    writing-mode: vertical-rl; transition: right 0.18s ease;
+  }
+  #debug-toggle:hover { color: #fff; background: #2c313c; }
+  #debug-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-bottom: 1px solid #2a2d35;
+    font-size: 10px; font-weight: 700; color: #555;
+    text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0;
+  }
+  #debug-panel-header button { background: none; border: none; color: #555; cursor: pointer; font-size: 16px; line-height: 1; }
+  #debug-panel-header button:hover { color: #fff; }
+  #debug-tab-bar { display: flex; border-bottom: 1px solid #2a2d35; flex-shrink: 0; }
+  .debug-tab { flex: 1; padding: 7px; background: none; border: none; border-bottom: 2px solid transparent; color: #666; cursor: pointer; font-size: 11px; font-weight: 600; }
+  .debug-tab.active { color: #fff; border-bottom-color: #4a90e2; }
+  #debug-mode-btns { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-bottom: 1px solid #2a2d35; flex-shrink: 0; }
+  .dbg-mode-btn { padding: 4px 8px; background: #1e2028; border: 1px solid #333; color: #888; cursor: pointer; border-radius: 4px; font-size: 10px; }
+  .dbg-mode-btn:hover { color: #ccc; border-color: #555; }
+  .dbg-mode-btn.active { background: #1e3a5f; color: #7ab4f5; border-color: #4a90e2; }
+  #debug-content { flex: 1; overflow-y: auto; }
+  #debug-table { width: 100%; border-collapse: collapse; }
+  #debug-table thead th { padding: 5px 8px; text-align: left; font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2d35; }
+  #debug-table thead th:last-child { text-align: center; }
+  .dbg-type-row td { padding: 6px 8px; border-bottom: 1px solid #1e2028; }
+  .dbg-type-row:hover td { background: #1a1d25; }
+  .dbg-inst-row td { padding: 3px 8px 3px 22px; border-bottom: 1px solid #191b22; }
+  .dbg-label { color: #bbb; font-size: 12px; cursor: pointer; }
+  .dbg-inst-label { color: #555; font-size: 11px; }
+  .dbg-count { color: #444; font-size: 10px; }
+  .dbg-vis-cell { text-align: center; white-space: nowrap; }
+  .dbg-vis-btn { padding: 2px 10px; border: 1px solid; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: 600; }
+  .dbg-vis-btn.on  { background: rgba(74,144,226,0.12); border-color: #4a90e2; color: #7ab4f5; }
+  .dbg-vis-btn.off { background: rgba(80,80,80,0.10);   border-color: #3a3d45; color: #555; }
+  .dbg-inst-dot { color: #555; font-size: 9px; }
+  .dbg-inst-dot.on { color: #4a90e2; }
+  #debug-viewmodes-pane, #debug-options-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
+  .options-section { padding: 10px 12px; }
+  .options-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+  .options-table { width: 100%; border-collapse: collapse; }
+  .options-table th { color: #888; font-size: 10px; text-align: left; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 6px; border-bottom: 1px solid #1c1c1c; font-weight: 600; }
+  .options-table th:last-child { text-align: center; }
+  .options-table td { color: #ddd; font-size: 12px; padding: 6px; border-bottom: 1px solid #1c1c1c; }
+  .options-table td:last-child { text-align: center; }
+  .options-table input[type=checkbox] { cursor: pointer; width: 14px; height: 14px; accent-color: #4a90e2; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-palette">
+    <div id="tabs">
+      <button class="tab active" data-tab="objects">Piles</button>
+    </div>
+    <div id="palette-items"></div>
+  </div>
+  <div id="left-tools">
+    <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
+    <button class="tool-btn" data-tool="line" title="Draw a new Route between two piles">Draw<br>New<br>Route</button>
+    <button class="tool-btn" data-tool="addItem" title="Click an object to add a triangle">+ &#9650;</button>
+    <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
+  </div>
+  <div id="canvas-container">
+    <div id="canvas"></div>
+    <div id="worker-portraits"></div>
+    <div id="mode-label">Mode: Game Interact</div>
+    <div class="hint" id="hint">
+      Drag a pile from the top palette into this area.<br>
+      Use <b>Draw Route</b> to drag a line between two piles.<br>
+      Use <b>+&#9650;</b> to click a pile and add a triangle.<br>
+      Click a worker (portrait or in level) to select it. Drag a worker to lift &amp; assign to a Route.
+    </div>
+  </div>
+</div>
+<div id="debug-panel">
+  <div id="debug-panel-header">
+    <span>Debug</span>
+    <button onclick="toggleDebugPanel()">&times;</button>
+  </div>
+  <div id="debug-tab-bar">
+    <button class="debug-tab active" data-tab="viewmodes">View Modes</button>
+    <button class="debug-tab" data-tab="options">Options</button>
+  </div>
+  <div id="debug-viewmodes-pane">
+    <div id="debug-mode-btns"></div>
+    <div id="debug-content">
+      <table id="debug-table">
+        <thead><tr><th>Type</th><th>Visible</th></tr></thead>
+        <tbody id="debug-type-rows"></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="debug-options-pane" hidden>
+    <div class="options-section">
+      <h4 class="options-title">Hitboxes</h4>
+      <table class="options-table">
+        <thead><tr><th>Type</th><th>Show</th></tr></thead>
+        <tbody id="hitbox-rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<button id="debug-toggle" onclick="toggleDebugPanel()">DEBUG</button>
+<div id="property-window" hidden>
+  <button class="close" title="Close">&times;</button>
+  <h3 id="prop-title">Properties</h3>
+  <div id="prop-body"></div>
+</div>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<script>
+// ===== STATE =====
+const GRID = 40;
+const palette = {
+  workers: [
+    { id: 'wA', kind: 'worker', color: '#e74c3c', capacity: 1, name: 'greg'  },
+    { id: 'wB', kind: 'worker', color: '#3498db', capacity: 2, name: 'romeo' },
+    { id: 'wC', kind: 'worker', color: '#f1c40f', capacity: 3, name: 'fred'  },
+  ],
+  objects: [
+    { id: 'oA', kind: 'object', color: '#2f6fd6' },
+  ],
+};
+const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
+let routeColorIdx = 0;
+const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
+const consumeRouteColor = () => { const c = peekRouteColor(); routeColorIdx++; return c; };
+
+let nodes = [];   // { id, templateId, x, y, color, items }
+let routes = [];  // { id, fromId, toId, color, workerId }
+let workers = []; // { id, templateId, color, capacity, x, y, routeId, carrying, segIdx, segT, dir }
+let activeTab = 'objects';
+let selectedWorkerId = null;
+
+// ===== MODE SYSTEM =====
+// Single source of truth for what the player is currently doing.
+// All contextual visibility / cursor / tool-highlight changes flow through applyMode().
+const MODES = {
+  gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default'     },
+  drawRoutes:     { display: 'Draw Routes',     tool: 'line',    cursor: 'crosshair'   },
+  addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy'        },
+  deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed' },
+  liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing'    },
+};
+const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode' };
+let currentMode = 'gameInteract';
+let prevMode = null; // saved mode while a transient mode (liftWorker) is active
+
+function setMode(name) {
+  if (!MODES[name]) return;
+  currentMode = name;
+  applyMode();
+}
+function pushTransientMode(name) {
+  if (currentMode === name) return;
+  prevMode = currentMode;
+  currentMode = name;
+  applyMode();
+}
+function popTransientMode() {
+  if (prevMode) { currentMode = prevMode; prevMode = null; applyMode(); }
+}
+
+// Central place for all mode-driven visual changes.
+// As more contextual UX is added, extend the per-mode branches below
+// (e.g. dim workers when drawing routes, glow piles in addItems, etc.).
+function applyMode() {
+  const m = MODES[currentMode];
+  // mode label
+  const lbl = document.getElementById('mode-label');
+  if (lbl) lbl.textContent = 'Mode: ' + m.display;
+  // cursor
+  containerEl.style.cursor = m.cursor;
+  // tool button highlighting
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tool === m.tool);
+  });
+  // cancel any in-progress line draft when leaving drawRoutes
+  if (currentMode !== 'drawRoutes') cancelLineDraft();
+
+  // --- contextual visibility hooks ---
+  // Pile highlight: subtle outline glow when targetable for the current mode.
+  nodeLayer.find('.nodeshape').forEach(s => {
+    let glow = 0;
+    if (currentMode === 'drawRoutes' || currentMode === 'addItems') glow = 6;
+    else if (currentMode === 'deleteMode') glow = 8;
+    s.shadowBlur(glow);
+    s.shadowColor(currentMode === 'deleteMode' ? '#ff3b3b' : '#ffffff');
+    s.shadowOpacity(glow ? 0.6 : 0);
+  });
+  nodeLayer.batchDraw();
+  // Worker dim: dim assigned workers in drawRoutes (focus on routes); highlight all in liftWorker.
+  workerLayer.find('.worker').forEach(g => {
+    if (currentMode === 'drawRoutes') g.opacity(0.4);
+    else g.opacity(1);
+  });
+  workerLayer.batchDraw();
+  applyDebugVisibility();
+}
+let nextId = 1;
+const uid = () => 'i' + (nextId++);
+const snap = v => Math.round(v / GRID) * GRID;
+
+// ===== KONVA STAGE =====
+const containerEl = document.getElementById('canvas-container');
+const stage = new Konva.Stage({
+  container: 'canvas',
+  width: containerEl.clientWidth,
+  height: containerEl.clientHeight,
+});
+const gridLayer = new Konva.Layer({ listening: false });
+const edgeLayer = new Konva.Layer();
+const nodeLayer = new Konva.Layer();
+const workerLayer = new Konva.Layer();
+const uiLayer = new Konva.Layer();
+stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
+
+window.addEventListener('resize', () => {
+  stage.width(containerEl.clientWidth);
+  stage.height(containerEl.clientHeight);
+  drawGrid();
+});
+
+function drawGrid() {
+  gridLayer.destroyChildren();
+  const W = stage.width(), H = stage.height();
+  for (let x = 0; x <= W; x += GRID) {
+    gridLayer.add(new Konva.Line({ points: [x, 0, x, H], stroke: '#1a1d23', strokeWidth: 1 }));
+  }
+  for (let y = 0; y <= H; y += GRID) {
+    gridLayer.add(new Konva.Line({ points: [0, y, W, y], stroke: '#1a1d23', strokeWidth: 1 }));
+  }
+  gridLayer.batchDraw();
+}
+drawGrid();
+
+// suppress browser context menu over canvas
+containerEl.addEventListener('contextmenu', e => e.preventDefault());
+
+// ===== PALETTE UI =====
+function isInUse(tplId) {
+  return workers.some(w => w.templateId === tplId) || nodes.some(n => n.templateId === tplId);
+}
+function renderPalette() {
+  const cont = document.getElementById('palette-items');
+  cont.innerHTML = '';
+  palette[activeTab].forEach(tpl => {
+    const el = document.createElement('div');
+    el.className = 'palette-item';
+    if (isInUse(tpl.id)) el.classList.add('in-use');
+    el.dataset.tplId = tpl.id;
+    const sw = document.createElement('div');
+    sw.className = tpl.kind === 'worker' ? 'swatch-circle' : 'swatch-square';
+    sw.style.backgroundColor = tpl.color;
+    el.appendChild(sw);
+    if (tpl.kind === 'worker') {
+      const cap = document.createElement('div');
+      cap.style.cssText = 'position:absolute;bottom:2px;right:4px;font-size:9px;color:#aaa';
+      cap.textContent = 'c' + tpl.capacity;
+      el.appendChild(cap);
+    }
+    el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
+    el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
+    cont.appendChild(el);
+  });
+}
+document.querySelectorAll('.tab').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activeTab = b.dataset.tab;
+    renderPalette();
+  });
+});
+
+// ===== TOOL SELECTION =====
+document.querySelectorAll('.tool-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    const mode = TOOL_TO_MODE[b.dataset.tool];
+    if (mode) setMode(mode);
+  });
+});
+
+// ===== PALETTE DRAG-AND-DROP =====
+let ghostEl = null, dragTpl = null, dragMoved = false, suppressNextClick = false;
+function startPaletteDrag(e, tpl, sourceEl) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  dragTpl = tpl; dragMoved = false;
+  ghostEl = document.createElement('div');
+  ghostEl.id = 'ghost';
+  ghostEl.style.cssText = 'width:40px;height:40px;border:2px solid #fff;background:' + tpl.color + ';border-radius:' + (tpl.kind === 'worker' ? '50%' : '6px');
+  document.body.appendChild(ghostEl);
+  moveGhost(e.clientX, e.clientY);
+  document.addEventListener('mousemove', onPaletteDragMove);
+  document.addEventListener('mouseup', onPaletteDragEnd);
+}
+function moveGhost(x, y) { if (ghostEl) { ghostEl.style.left = (x - 20) + 'px'; ghostEl.style.top = (y - 20) + 'px'; } }
+function onPaletteDragMove(e) { dragMoved = true; moveGhost(e.clientX, e.clientY); }
+function onPaletteDragEnd(e) {
+  document.removeEventListener('mousemove', onPaletteDragMove);
+  document.removeEventListener('mouseup', onPaletteDragEnd);
+  if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+  if (dragMoved) {
+    const r = containerEl.getBoundingClientRect();
+    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+      const sx = e.clientX - r.left, sy = e.clientY - r.top;
+      if (dragTpl.kind === 'worker') placeWorker(dragTpl, sx, sy);
+      else placeNode(dragTpl, sx, sy);
+    }
+    suppressNextClick = true;
+    setTimeout(() => suppressNextClick = false, 50);
+  }
+  dragTpl = null;
+  renderPalette();
+}
+
+// ===== PLACE / DRAW NODES =====
+function placeNode(tpl, x, y) {
+  const node = { id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0 };
+  nodes.push(node);
+  drawNode(node);
+  hideHint();
+}
+const STRIPE_PATTERN = (() => {
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 8;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(120,120,120,0.32)';
+  ctx.fillRect(0, 0, 8, 8);
+  ctx.strokeStyle = 'rgba(220,220,220,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = -8; i <= 16; i += 4) {
+    ctx.moveTo(i, 8);
+    ctx.lineTo(i + 8, 0);
+  }
+  ctx.stroke();
+  return c;
+})();
+const PILE_DOT_PATTERN = (() => {
+  const c = document.createElement('canvas');
+  c.width = 6; c.height = 6;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(2, 2, 1, 1);
+  return c;
+})();
+function drawNode(node) {
+  const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
+  const shape = new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: '#fff', strokeWidth: 2, name: 'nodeshape' });
+  const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
+  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: hitboxShow.piles });
+  const stack = new Konva.Group({ name: 'stack' });
+  grp.add(shape, tex, hitbox, stack);
+  grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
+  nodeLayer.add(grp);
+  updateNodeStack(node);
+  nodeLayer.batchDraw();
+}
+function updateNodeStack(node) {
+  const grp = nodeLayer.findOne('#' + node.id);
+  if (!grp) return;
+  const stack = grp.findOne('.stack');
+  stack.destroyChildren();
+  for (let i = 0; i < node.items; i++) {
+    const t = new Konva.RegularPolygon({
+      x: 0, y: -28 - i * 12, sides: 3, radius: 8,
+      fill: '#f1c40f', stroke: '#fff', strokeWidth: 1
+    });
+    stack.add(t);
+  }
+  nodeLayer.batchDraw();
+}
+
+// ===== PLACE / DRAW WORKERS =====
+function placeWorker(tpl, x, y) {
+  const w = {
+    id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
+    x: x, y: y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1
+  };
+  workers.push(w);
+  drawWorker(w);
+  hideHint();
+}
+function drawWorker(w) {
+  const tpl = palette.workers.find(t => t.id === w.templateId);
+  const name = tpl?.name ?? '';
+  const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
+
+  const grp = new Konva.Group({ x: w.x, y: w.y, id: w.id, name: 'worker' });
+  const c = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, cornerRadius: 5, fill: w.color, stroke: '#fff', strokeWidth: 2, name: 'workercircle' });
+  const hitbox = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: hitboxShow.workers });
+  // small carry indicator
+  const carry = new Konva.RegularPolygon({ sides: 3, radius: 5, fill: '#f1c40f', stroke: '#fff', strokeWidth: 1, y: 0, name: 'carry', visible: false });
+  if (displayName) {
+    const label = new Konva.Text({ text: displayName, fontSize: 10, fontFamily: 'system-ui, sans-serif', fill: 'rgba(255,255,255,0.75)', y: 16, listening: false, name: 'workerlabel' });
+    label.x(-label.width() / 2);
+    grp.add(label);
+  }
+  grp.add(c, hitbox, carry);
+  grp.on('mousedown', e => onWorkerMouseDown(e, w, grp));
+  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; });
+  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
+  workerLayer.add(grp);
+  workerLayer.batchDraw();
+}
+function updateWorkerVisual(w) {
+  const grp = workerLayer.findOne('#' + w.id);
+  if (!grp) return;
+  grp.position({ x: w.x, y: w.y });
+  const carry = grp.findOne('.carry');
+  if (w.carrying > 0) { carry.visible(true); carry.fill('#f1c40f'); }
+  else carry.visible(false);
+}
+
+// ===== ORTHOGONAL PATH (single-bend L with rounded corner) =====
+function orthoPathData(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  if (Math.abs(dx) < 1) return `M ${x1} ${y1} L ${x2} ${y2}`;
+  if (Math.abs(dy) < 1) return `M ${x1} ${y1} L ${x2} ${y2}`;
+  // horizontal leg first, then vertical leg. Corner at (x2, y1).
+  const cx = x2, cy = y1;
+  const r = Math.min(16, Math.abs(dx) / 2, Math.abs(dy) / 2);
+  const sx = Math.sign(x1 - cx); // toward x1 along leg1
+  const sy = Math.sign(y2 - cy); // toward y2 along leg2
+  const ax = cx + sx * r, ay = cy;
+  const bx = cx, by = cy + sy * r;
+  return `M ${x1} ${y1} L ${ax} ${ay} Q ${cx} ${cy} ${bx} ${by} L ${x2} ${y2}`;
+}
+function orthoWaypoints(x1, y1, x2, y2) {
+  if (Math.abs(x2 - x1) < 1 || Math.abs(y2 - y1) < 1) return [{x:x1,y:y1},{x:x2,y:y2}];
+  return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2}];
+}
+function pointAtFraction(wp, frac) {
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < wp.length - 1; i++) {
+    const len = Math.hypot(wp[i+1].x - wp[i].x, wp[i+1].y - wp[i].y);
+    segs.push(len); total += len;
+  }
+  let target = total * frac;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i]) {
+      const t = segs[i] === 0 ? 0 : target / segs[i];
+      return { x: wp[i].x + (wp[i+1].x - wp[i].x) * t, y: wp[i].y + (wp[i+1].y - wp[i].y) * t };
+    }
+    target -= segs[i];
+  }
+  return wp[wp.length - 1];
+}
+
+// ===== ROUTE DRAFTING =====
+let lineDraft = null;
+function onNodeMouseDown(e, node, grp) {
+  if (e.evt.button === 2) {
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
+    return;
+  }
+  if (currentMode === 'drawRoutes') {
+    e.cancelBubble = true;
+    startLineDraft(node);
+  } else if (currentMode === 'addItems') {
+    e.cancelBubble = true;
+    node.items++;
+    updateNodeStack(node);
+  } else if (currentMode === 'deleteMode') {
+    e.cancelBubble = true;
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
+  } else if (currentMode === 'gameInteract') {
+    e.cancelBubble = true;
+    startNodeMove(node, grp);
+  }
+}
+function startNodeMove(node, grp) {
+  const onMove = () => {
+    const p = stage.getPointerPosition();
+    if (!p) return;
+    node.x = snap(p.x); node.y = snap(p.y);
+    grp.position({ x: node.x, y: node.y });
+    redrawRoutesTouching(node.id);
+    nodeLayer.batchDraw();
+  };
+  const onUp = () => {
+    stage.off('mousemove.nodedrag');
+    stage.off('mouseup.nodedrag');
+  };
+  stage.on('mousemove.nodedrag', onMove);
+  stage.on('mouseup.nodedrag', onUp);
+}
+
+function startLineDraft(fromNode) {
+  cancelLineDraft();
+  const previewColor = peekRouteColor();
+  const path = new Konva.Path({ stroke: previewColor, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
+  const endA = new Konva.Circle({ x: fromNode.x, y: fromNode.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
+  const endB = new Konva.Circle({ x: fromNode.x, y: fromNode.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
+  uiLayer.add(path, endA, endB);
+  lineDraft = { fromNode, path, endA, endB, previewColor };
+  uiLayer.batchDraw();
+}
+function cancelLineDraft() {
+  if (!lineDraft) return;
+  lineDraft.path.destroy();
+  lineDraft.endA.destroy();
+  lineDraft.endB.destroy();
+  lineDraft = null;
+  uiLayer.batchDraw();
+}
+function nodeAtPoint(x, y) {
+  for (const n of nodes) {
+    const dx = n.x - x, dy = n.y - y;
+    if (dx*dx + dy*dy <= 24*24) return n;
+  }
+  return null;
+}
+stage.on('mousemove', () => {
+  if (!lineDraft) return;
+  const p = stage.getPointerPosition(); if (!p) return;
+  let tx = p.x, ty = p.y;
+  const hover = nodeAtPoint(p.x, p.y);
+  if (hover && hover.id !== lineDraft.fromNode.id) { tx = hover.x; ty = hover.y; }
+  lineDraft.path.data(orthoPathData(lineDraft.fromNode.x, lineDraft.fromNode.y, tx, ty));
+  lineDraft.endB.position({ x: tx, y: ty });
+  uiLayer.batchDraw();
+});
+stage.on('mouseup', () => {
+  if (!lineDraft) return;
+  const p = stage.getPointerPosition();
+  const hover = p ? nodeAtPoint(p.x, p.y) : null;
+  if (hover && hover.id !== lineDraft.fromNode.id) {
+    const exists = routes.some(j =>
+      (j.fromId === lineDraft.fromNode.id && j.toId === hover.id) ||
+      (j.toId === lineDraft.fromNode.id && j.fromId === hover.id)
+    );
+    if (!exists) {
+      const route = { id: uid(), fromId: lineDraft.fromNode.id, toId: hover.id, color: consumeRouteColor(), workerId: null };
+      routes.push(route);
+      drawRoute(route);
+    }
+  }
+  cancelLineDraft();
+});
+
+// ===== ROUTE RENDER =====
+function drawRoute(route) {
+  const fn = nodes.find(n => n.id === route.fromId);
+  const tn = nodes.find(n => n.id === route.toId);
+  const grp = new Konva.Group({ id: route.id, name: 'route' });
+  const path = new Konva.Path({
+    data: orthoPathData(fn.x, fn.y, tn.x, tn.y),
+    stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round', name: 'routepath'
+  });
+  const endA = new Konva.Circle({ x: fn.x, y: fn.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
+  const endB = new Konva.Circle({ x: tn.x, y: tn.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
+  const hitbox = new Konva.Path({
+    data: orthoPathData(fn.x, fn.y, tn.x, tn.y),
+    stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
+    dash: [3, 3], listening: false, name: 'hitbox-route', visible: hitboxShow.routes
+  });
+  grp.add(path, hitbox, endA, endB);
+  grp.on('mousedown', e => onRouteMouseDown(e, route));
+  edgeLayer.add(grp);
+  edgeLayer.batchDraw();
+  drawSlotForRoute(route);
+}
+function drawSlotForRoute(route) {
+  const fn = nodes.find(n => n.id === route.fromId);
+  const tn = nodes.find(n => n.id === route.toId);
+  if (!fn || !tn) return;
+  const wp = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+  const mid = pointAtFraction(wp, 0.5);
+  const grp = new Konva.Group({
+    id: 'slot_' + route.id, name: 'slot',
+    x: mid.x, y: mid.y, visible: false,
+  });
+  const slot = new Konva.Rect({
+    x: -15, y: -15, width: 30, height: 30, cornerRadius: 5,
+    stroke: route.color, strokeWidth: 2, dash: [4, 3],
+    fill: 'rgba(255,255,255,0.06)',
+  });
+  const hitbox = new Konva.Circle({
+    radius: 22, fillPatternImage: STRIPE_PATTERN, listening: false,
+    name: 'hitbox-slot', visible: hitboxShow.slots,
+  });
+  grp.add(slot, hitbox);
+  grp.routeRef = route;
+  uiLayer.add(grp);
+  uiLayer.batchDraw();
+}
+function redrawRoutesTouching(nodeId) {
+  routes.forEach(j => {
+    if (j.fromId !== nodeId && j.toId !== nodeId) return;
+    const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
+    const fn = nodes.find(n => n.id === j.fromId);
+    const tn = nodes.find(n => n.id === j.toId);
+    grp.findOne('.routepath').data(orthoPathData(fn.x, fn.y, tn.x, tn.y));
+    const rhb = grp.findOne('.hitbox-route');
+    if (rhb) rhb.data(orthoPathData(fn.x, fn.y, tn.x, tn.y));
+    const ends = grp.find('.routeend');
+    ends[0].position({ x: fn.x, y: fn.y });
+    ends[1].position({ x: tn.x, y: tn.y });
+    const slot = uiLayer.findOne('#slot_' + j.id);
+    if (slot) {
+      const wp = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+      const mid = pointAtFraction(wp, 0.5);
+      slot.position({ x: mid.x, y: mid.y });
+    }
+  });
+  edgeLayer.batchDraw();
+  uiLayer.batchDraw();
+}
+function onRouteMouseDown(e, route) {
+  if (e.evt.button === 2) {
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
+    return;
+  }
+  if (currentMode === 'deleteMode') {
+    e.cancelBubble = true;
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
+  }
+}
+
+// ===== WORKER LIFTING & ASSIGNMENT =====
+function onWorkerMouseDown(e, w, grp) {
+  if (e.evt.button === 2) {
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete worker?', () => deleteWorker(w));
+    return;
+  }
+  if (currentMode === 'deleteMode') {
+    e.cancelBubble = true;
+    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete worker?', () => deleteWorker(w));
+    return;
+  }
+  // Workers are always interactable — switch out of any other mode (e.g. drawRoutes) on click
+  if (currentMode !== 'gameInteract') setMode('gameInteract');
+  e.cancelBubble = true;
+
+  const startP = stage.getPointerPosition();
+  let entered = false;
+
+  const beginLift = () => {
+    if (w.routeId) {
+      const oldRoute = routes.find(j => j.id === w.routeId);
+      if (oldRoute) oldRoute.workerId = null;
+      w.routeId = null;
+    }
+    grp.moveToTop();
+    pushTransientMode('liftWorker'); // applyDebugVisibility shows slots for unoccupied routes
+  };
+
+  const onMove = () => {
+    const p = stage.getPointerPosition(); if (!p) return;
+    if (!entered) {
+      const dx = p.x - startP.x, dy = p.y - startP.y;
+      if (dx*dx + dy*dy > 25) { entered = true; beginLift(); }
+    }
+    if (entered) { grp.position({ x: p.x, y: p.y }); workerLayer.batchDraw(); }
+  };
+  const onUp = () => {
+    stage.off('mousemove.wdrag'); stage.off('mouseup.wdrag');
+    if (!entered) {
+      // Click without drag → select this worker
+      selectWorker(w.id);
+      return;
+    }
+    const p = stage.getPointerPosition();
+    let chosen = null;
+    if (p) {
+      const visibleSlots = uiLayer.find('.slot').filter(s => s.visible());
+      for (const s of visibleSlots) {
+        const dx = s.x() - p.x, dy = s.y() - p.y;
+        if (dx*dx + dy*dy <= 22*22) { chosen = s.routeRef; break; }
+      }
+    }
+    popTransientMode();
+    if (chosen) {
+      chosen.workerId = w.id;
+      w.routeId = chosen.id;
+      w.segIdx = 0; w.segT = 0; w.dir = 1; w.carrying = 0;
+      const fn = nodes.find(n => n.id === chosen.fromId);
+      w.x = fn.x; w.y = fn.y;
+    } else if (p) {
+      w.x = snap(p.x); w.y = snap(p.y);
+    }
+    updateWorkerVisual(w);
+    selectWorker(w.id); // selection follows the lifted worker
+  };
+  stage.on('mousemove.wdrag', onMove);
+  stage.on('mouseup.wdrag', onUp);
+}
+
+// ===== WORKER SELECTION =====
+function selectWorker(id) {
+  selectedWorkerId = id;
+  renderPortraits();
+  updateWorkerSelection();
+}
+function updateWorkerSelection() {
+  workers.forEach(w => {
+    const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
+    const c = grp.findOne('.workercircle');
+    if (w.id === selectedWorkerId) {
+      c.strokeWidth(4);
+      c.shadowColor('#ffffff'); c.shadowBlur(14); c.shadowOpacity(0.85);
+    } else {
+      c.strokeWidth(2);
+      c.shadowOpacity(0); c.shadowBlur(0);
+    }
+  });
+  workerLayer.batchDraw();
+}
+
+// ===== WORKER PORTRAITS =====
+function renderPortraits() {
+  const cont = document.getElementById('worker-portraits'); if (!cont) return;
+  cont.innerHTML = '';
+  workers.forEach(w => {
+    const tpl = palette.workers.find(t => t.id === w.templateId);
+    const name = tpl?.name ?? '';
+    const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'portrait-wrap' + (w.id === selectedWorkerId ? ' selected' : '');
+    wrap.onclick = () => selectWorker(w.id);
+
+    const el = document.createElement('div');
+    el.className = 'portrait';
+    if (name) {
+      el.style.backgroundImage = `url('icons/icon_worker_${name}.png')`;
+    } else {
+      el.style.background = w.color;
+    }
+
+    const badge = document.createElement('div');
+    badge.className = 'cap-badge';
+    badge.textContent = 'c' + w.capacity;
+    el.appendChild(badge);
+    wrap.appendChild(el);
+
+    if (displayName) {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'portrait-name';
+      nameEl.textContent = displayName;
+      wrap.appendChild(nameEl);
+    }
+
+    cont.appendChild(wrap);
+  });
+}
+
+function spawnInitialWorkers() {
+  const positions = [{x:160,y:160},{x:160,y:240},{x:160,y:320}];
+  palette.workers.forEach((tpl, i) => {
+    const pos = positions[i] || {x:160 + i*60, y:160};
+    const w = {
+      id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
+      x: pos.x, y: pos.y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1
+    };
+    workers.push(w);
+    drawWorker(w);
+  });
+}
+
+// ===== DELETE / CONFIRM DIALOG =====
+let confirmEl = null;
+function showConfirm(cx, cy, msg, onYes) {
+  if (confirmEl) confirmEl.remove();
+  confirmEl = document.createElement('div');
+  confirmEl.id = 'confirm-dialog';
+  confirmEl.style.left = Math.min(cx, window.innerWidth - 200) + 'px';
+  confirmEl.style.top = Math.min(cy, window.innerHeight - 60) + 'px';
+  confirmEl.innerHTML = msg + ' <button id="cy">Yes</button><button id="cn">No</button>';
+  document.body.appendChild(confirmEl);
+  document.getElementById('cy').onclick = () => { onYes(); closeConfirm(); };
+  document.getElementById('cn').onclick = closeConfirm;
+}
+function closeConfirm() { if (confirmEl) { confirmEl.remove(); confirmEl = null; } }
+document.addEventListener('mousedown', e => {
+  if (confirmEl && !confirmEl.contains(e.target)) closeConfirm();
+}, true);
+
+function deleteNode(node) {
+  routes.filter(j => j.fromId === node.id || j.toId === node.id).slice().forEach(deleteRoute);
+  nodes = nodes.filter(n => n.id !== node.id);
+  const g = nodeLayer.findOne('#' + node.id); if (g) g.destroy();
+  nodeLayer.batchDraw();
+  renderPalette();
+}
+function deleteRoute(route) {
+  if (route.workerId) {
+    const w = workers.find(x => x.id === route.workerId);
+    if (w) w.routeId = null;
+  }
+  routes = routes.filter(j => j.id !== route.id);
+  const g = edgeLayer.findOne('#' + route.id); if (g) g.destroy();
+  const slot = uiLayer.findOne('#slot_' + route.id); if (slot) slot.destroy();
+  edgeLayer.batchDraw();
+  uiLayer.batchDraw();
+}
+function deleteWorker(w) {
+  if (w.routeId) {
+    const j = routes.find(jj => jj.id === w.routeId);
+    if (j) j.workerId = null;
+  }
+  workers = workers.filter(x => x.id !== w.id);
+  const g = workerLayer.findOne('#' + w.id); if (g) g.destroy();
+  workerLayer.batchDraw();
+  if (selectedWorkerId === w.id) selectedWorkerId = null;
+  renderPortraits();
+}
+
+// ===== PROPERTY WINDOW =====
+const propWin = document.getElementById('property-window');
+propWin.querySelector('.close').onclick = () => { propWin.hidden = true; };
+function openTemplateProps(tpl) {
+  document.getElementById('prop-title').textContent = (tpl.kind === 'worker' ? 'Worker' : 'Pile') + ' Properties';
+  const body = document.getElementById('prop-body');
+  body.innerHTML = '';
+
+  const r1 = document.createElement('div'); r1.className = 'row';
+  const l1 = document.createElement('label'); l1.textContent = 'Color';
+  const ci = document.createElement('input'); ci.type = 'color'; ci.value = tpl.color;
+  ci.oninput = () => { tpl.color = ci.value; renderPalette(); refreshTemplateInstances(tpl); };
+  r1.append(l1, ci); body.appendChild(r1);
+
+  if (tpl.kind === 'worker') {
+    const r2 = document.createElement('div'); r2.className = 'row';
+    const l2 = document.createElement('label'); l2.textContent = 'Capacity';
+    const ni = document.createElement('input'); ni.type = 'number'; ni.min = 1; ni.max = 20; ni.value = tpl.capacity;
+    ni.oninput = () => { tpl.capacity = Math.max(1, parseInt(ni.value) || 1); renderPalette(); refreshTemplateInstances(tpl); };
+    r2.append(l2, ni); body.appendChild(r2);
+  }
+
+  propWin.hidden = false;
+}
+function refreshTemplateInstances(tpl) {
+  if (tpl.kind === 'worker') {
+    workers.filter(w => w.templateId === tpl.id).forEach(w => {
+      w.color = tpl.color; w.capacity = tpl.capacity;
+      const grp = workerLayer.findOne('#' + w.id);
+      if (grp) grp.findOne('.workercircle').fill(tpl.color);
+    });
+    workerLayer.batchDraw();
+  } else {
+    nodes.filter(n => n.templateId === tpl.id).forEach(n => {
+      n.color = tpl.color;
+      const grp = nodeLayer.findOne('#' + n.id);
+      if (grp) grp.findOne('.nodeshape').fill(tpl.color);
+    });
+    nodeLayer.batchDraw();
+  }
+}
+
+// ===== HINT =====
+function hideHint() { document.getElementById('hint').style.display = 'none'; }
+
+// ===== ANIMATION (worker shuttle) =====
+const SPEED_PX_PER_SEC = 90;
+const anim = new Konva.Animation(frame => {
+  const dt = Math.min(0.05, frame.timeDiff / 1000);
+  let dirty = false;
+  workers.forEach(w => {
+    if (!w.routeId) return;
+    const route = routes.find(j => j.id === w.routeId); if (!route) return;
+    const fn = nodes.find(n => n.id === route.fromId);
+    const tn = nodes.find(n => n.id === route.toId);
+    if (!fn || !tn) return;
+    const wpAB = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+    const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
+
+    let remaining = SPEED_PX_PER_SEC * dt;
+    while (remaining > 0 && w.segIdx < path.length - 1) {
+      const a = path[w.segIdx], b = path[w.segIdx + 1];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const distLeft = (1 - w.segT) * segLen;
+      if (remaining < distLeft) {
+        w.segT += remaining / segLen;
+        remaining = 0;
+      } else {
+        remaining -= distLeft;
+        w.segIdx++;
+        w.segT = 0;
+      }
+    }
+    if (w.segIdx >= path.length - 1) {
+      // arrived at end
+      const dest = w.dir === 1 ? tn : fn;
+      // drop carrying
+      if (w.carrying > 0) {
+        dest.items += w.carrying;
+        w.carrying = 0;
+        updateNodeStack(dest);
+      }
+      // pick up from this end
+      const pickup = Math.min(w.capacity, dest.items);
+      if (pickup > 0) {
+        dest.items -= pickup;
+        w.carrying = pickup;
+        updateNodeStack(dest);
+      }
+      // reverse direction
+      w.dir *= -1;
+      w.segIdx = 0; w.segT = 0;
+      w.x = dest.x; w.y = dest.y;
+    } else {
+      const a = path[w.segIdx], b = path[w.segIdx + 1];
+      w.x = a.x + (b.x - a.x) * w.segT;
+      w.y = a.y + (b.y - a.y) * w.segT;
+    }
+    updateWorkerVisual(w);
+    dirty = true;
+  });
+  return dirty;
+}, [workerLayer, nodeLayer]);
+anim.start();
+
+// ===== DEBUG PANEL =====
+const VISUAL_TYPES = [
+  {
+    key: 'workers', label: 'Workers',
+    getInstances: () => workers.map(w => {
+      const tpl = palette.workers.find(t => t.id === w.templateId);
+      const n = tpl?.name ?? '';
+      return { id: w.id, label: n ? n[0].toUpperCase() + n.slice(1) : w.id };
+    }),
+    apply: vis => { workerLayer.find('.worker').forEach(g => g.visible(vis)); workerLayer.batchDraw(); }
+  },
+  {
+    key: 'workerLabels', label: 'Worker Labels',
+    getInstances: () => workers.map(w => {
+      const tpl = palette.workers.find(t => t.id === w.templateId);
+      const n = tpl?.name ?? '';
+      return { id: w.id + '_lbl', label: (n ? n[0].toUpperCase() + n.slice(1) : w.id) + ' label' };
+    }),
+    apply: vis => { workerLayer.find('.workerlabel').forEach(el => el.visible(vis)); workerLayer.batchDraw(); }
+  },
+  {
+    key: 'piles', label: 'Piles',
+    getInstances: () => nodes.map(n => ({ id: n.id, label: 'Pile ' + n.id })),
+    apply: vis => { nodeLayer.find('.node').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
+  },
+  {
+    key: 'pileItems', label: 'Pile Items',
+    getInstances: () => nodes.filter(n => n.items > 0).map(n => ({ id: n.id + '_stk', label: 'Pile ' + n.id + ' (' + n.items + ' items)' })),
+    apply: vis => { nodeLayer.find('.stack').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
+  },
+  {
+    key: 'routes', label: 'Routes',
+    getInstances: () => routes.map(r => ({ id: r.id, label: r.fromId + ' → ' + r.toId })),
+    apply: vis => { edgeLayer.find('.routepath').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
+  },
+  {
+    key: 'routeEnds', label: 'Route Ends',
+    getInstances: () => routes.map(r => ({ id: r.id + '_ends', label: 'Route ' + r.id })),
+    apply: vis => { edgeLayer.find('.routeend').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
+  },
+  {
+    key: 'routeSlots', label: 'Route Slots',
+    getInstances: () => routes.filter(r => !r.workerId).map(r => ({ id: r.id + '_slot', label: 'Slot for ' + r.id })),
+    apply: vis => {
+      uiLayer.find('.slot').forEach(s => {
+        const occupied = s.routeRef && s.routeRef.workerId;
+        s.visible(vis && !occupied);
+      });
+      uiLayer.batchDraw();
+    }
+  },
+  {
+    key: 'grid', label: 'Grid',
+    getInstances: () => [{ id: 'grid', label: 'Background grid' }],
+    apply: vis => { gridLayer.visible(vis); gridLayer.batchDraw(); }
+  },
+];
+
+const modeVisibility = {};
+const ROUTE_VISIBLE_MODES = new Set(['drawRoutes', 'liftWorker']);
+const SLOT_VISIBLE_MODES = new Set(['liftWorker']);
+Object.keys(MODES).forEach(mode => {
+  modeVisibility[mode] = {};
+  VISUAL_TYPES.forEach(t => {
+    let defaultVis = true;
+    if (t.key === 'routes' || t.key === 'routeEnds') {
+      defaultVis = ROUTE_VISIBLE_MODES.has(mode);
+    } else if (t.key === 'routeSlots') {
+      defaultVis = SLOT_VISIBLE_MODES.has(mode);
+    }
+    modeVisibility[mode][t.key] = defaultVis;
+  });
+});
+
+let debugOpen = false;
+let debugActiveMode = 'gameInteract';
+let debugActiveTab = 'viewmodes';
+const expandedTypes = new Set();
+
+// Hitbox visualization state — shown when checked in Debug → Options → Hitboxes.
+const HITBOX_TYPES = [
+  { key: 'piles',   label: 'Piles' },
+  { key: 'workers', label: 'Workers' },
+  { key: 'slots',   label: 'Route Slots' },
+  { key: 'routes',  label: 'Routes' },
+];
+const hitboxShow = { piles: false, workers: false, slots: false, routes: false };
+function applyHitboxVisibility() {
+  nodeLayer.find('.hitbox-pile').forEach(h => h.visible(hitboxShow.piles));
+  workerLayer.find('.hitbox-worker').forEach(h => h.visible(hitboxShow.workers));
+  uiLayer.find('.hitbox-slot').forEach(h => h.visible(hitboxShow.slots));
+  edgeLayer.find('.hitbox-route').forEach(h => h.visible(hitboxShow.routes));
+  nodeLayer.batchDraw(); workerLayer.batchDraw(); uiLayer.batchDraw(); edgeLayer.batchDraw();
+}
+
+let debugPreviewing = false; // true while the panel is overriding the live view
+function applyDebugVisibility() {
+  // While previewing from the panel, show debugActiveMode's visibility live.
+  // Otherwise, follow the actual game mode.
+  if (!debugPreviewing && debugActiveMode !== currentMode) {
+    debugActiveMode = currentMode;
+    if (debugOpen) renderDebugPanel();
+  }
+  const modeToApply = debugPreviewing ? debugActiveMode : currentMode;
+  const vis = modeVisibility[modeToApply];
+  if (!vis) return;
+  VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== false));
+}
+
+let lastDebugSignature = '';
+function renderDebugPanel() {
+  const modeBtnsEl = document.getElementById('debug-mode-btns');
+  const tbody = document.getElementById('debug-type-rows');
+  if (!modeBtnsEl || !tbody) return;
+
+  // Skip re-render if nothing relevant has actually changed.
+  // Without this, the 100ms refresh nukes rows mid-click and the click event
+  // is lost between mousedown and mouseup.
+  const sig = JSON.stringify({
+    mode: debugActiveMode,
+    expanded: [...expandedTypes].sort(),
+    vis: modeVisibility,
+    counts: VISUAL_TYPES.map(t => t.getInstances().length),
+    instLabels: VISUAL_TYPES
+      .filter(t => expandedTypes.has(t.key))
+      .map(t => t.getInstances().map(i => i.label)),
+  });
+  if (sig === lastDebugSignature) return;
+  lastDebugSignature = sig;
+
+  modeBtnsEl.innerHTML = '';
+  Object.entries(MODES).forEach(([key, m]) => {
+    const btn = document.createElement('button');
+    btn.className = 'dbg-mode-btn' + (debugActiveMode === key ? ' active' : '');
+    btn.textContent = m.display;
+    btn.onclick = () => {
+      debugActiveMode = key;
+      debugPreviewing = true;
+      applyDebugVisibility();
+      renderDebugPanel();
+    };
+    modeBtnsEl.appendChild(btn);
+  });
+
+  const vis = modeVisibility[debugActiveMode];
+  let html = '';
+  VISUAL_TYPES.forEach(type => {
+    const instances = type.getInstances();
+    const isVisible = vis[type.key] !== false;
+    const isExpanded = expandedTypes.has(type.key);
+    const canExpand = instances.length > 0;
+    const expandIcon = canExpand ? (isExpanded ? '▾' : '▸') : '·';
+    const cursorStyle = canExpand ? 'cursor:pointer' : 'cursor:default';
+
+    html +=
+      '<tr class="dbg-type-row" data-action="expand" data-key="' + type.key + '" style="' + cursorStyle + '">' +
+        '<td class="dbg-label">' + expandIcon + ' ' + type.label +
+          ' <span class="dbg-count">(' + instances.length + ')</span></td>' +
+        '<td class="dbg-vis-cell">' +
+          '<button class="dbg-vis-btn ' + (isVisible ? 'on' : 'off') +
+            '" data-action="toggle" data-key="' + type.key + '">' +
+            (isVisible ? 'Visible' : 'Hidden') +
+          '</button>' +
+        '</td>' +
+      '</tr>';
+
+    if (isExpanded) {
+      instances.forEach(inst => {
+        html +=
+          '<tr class="dbg-inst-row">' +
+            '<td class="dbg-inst-label">↳ ' + inst.label + '</td>' +
+            '<td class="dbg-vis-cell"><span class="dbg-inst-dot ' + (isVisible ? 'on' : '') + '">●</span></td>' +
+          '</tr>';
+      });
+    }
+  });
+  tbody.innerHTML = html;
+}
+
+// Event delegation at the DOCUMENT level — survives every re-render
+// and doesn't care when the rows came into existence.
+document.addEventListener('click', e => {
+  if (!e.target.closest || !e.target.closest('#debug-panel')) return;
+  const btn = e.target.closest('[data-action="toggle"]');
+  if (btn) {
+    e.stopPropagation();
+    console.log('[debug] toggle vis:', btn.dataset.key);
+    toggleDebugVis(btn.dataset.key);
+    return;
+  }
+  const row = e.target.closest('[data-action="expand"]');
+  if (row) {
+    console.log('[debug] expand:', row.dataset.key);
+    toggleDebugExpand(row.dataset.key);
+  }
+});
+
+function toggleDebugExpand(typeKey) {
+  if (expandedTypes.has(typeKey)) expandedTypes.delete(typeKey);
+  else expandedTypes.add(typeKey);
+  renderDebugPanel();
+}
+
+function toggleDebugVis(typeKey) {
+  modeVisibility[debugActiveMode][typeKey] = !modeVisibility[debugActiveMode][typeKey];
+  // Preview the change live, even if it's for a non-current mode.
+  debugPreviewing = (debugActiveMode !== currentMode);
+  applyDebugVisibility();
+  renderDebugPanel();
+}
+
+// When the cursor leaves the debug panel, return the live view to the actual game mode.
+(() => {
+  const panel = document.getElementById('debug-panel');
+  if (!panel) return;
+  panel.addEventListener('mouseleave', () => {
+    if (!debugPreviewing) return;
+    debugPreviewing = false;
+    debugActiveMode = currentMode;
+    applyDebugVisibility();
+    renderDebugPanel();
+  });
+})();
+
+function setDebugTab(tab) {
+  debugActiveTab = tab;
+  document.querySelectorAll('#debug-tab-bar .debug-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  const vm = document.getElementById('debug-viewmodes-pane');
+  const op = document.getElementById('debug-options-pane');
+  if (vm) vm.hidden = (tab !== 'viewmodes');
+  if (op) op.hidden = (tab !== 'options');
+  if (tab === 'options') renderOptionsPane();
+  else renderDebugPanel();
+}
+document.querySelectorAll('#debug-tab-bar .debug-tab').forEach(b => {
+  b.addEventListener('click', () => setDebugTab(b.dataset.tab));
+});
+
+function renderOptionsPane() {
+  const tbody = document.getElementById('hitbox-rows');
+  if (!tbody) return;
+  let html = '';
+  HITBOX_TYPES.forEach(t => {
+    html +=
+      '<tr>' +
+        '<td>' + t.label + '</td>' +
+        '<td><input type="checkbox" data-hitbox="' + t.key + '"' +
+          (hitboxShow[t.key] ? ' checked' : '') + '></td>' +
+      '</tr>';
+  });
+  tbody.innerHTML = html;
+  tbody.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      hitboxShow[cb.dataset.hitbox] = cb.checked;
+      applyHitboxVisibility();
+    });
+  });
+}
+
+function toggleDebugPanel() {
+  debugOpen = !debugOpen;
+  const panel = document.getElementById('debug-panel');
+  const toggle = document.getElementById('debug-toggle');
+  panel.classList.toggle('open', debugOpen);
+  toggle.style.right = debugOpen ? '280px' : '0';
+  if (debugOpen) {
+    if (debugActiveTab === 'options') renderOptionsPane();
+    else renderDebugPanel();
+  }
+}
+
+setInterval(() => {
+  if (!debugOpen) return;
+  if (debugActiveTab === 'viewmodes') renderDebugPanel();
+}, 100);
+
+// ===== INIT =====
+spawnInitialWorkers();
+renderPortraits();
+renderPalette();
+applyMode();
+</script>
+</body>
+</html>
