@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-29T21:40:56.686Z",
+  "stage": {
+    "x": 0,
+    "y": 0,
+    "scale": 1
+  },
+  "palette": {
+    "objects": [
+      {
+        "id": "oA",
+        "kind": "object",
+        "color": "#2f6fd6"
+      }
+    ],
+    "workers": [
+      {
+        "id": "wA",
+        "kind": "worker",
+        "color": "#e74c3c",
+        "capacity": 1,
+        "name": "greg"
+      },
+      {
+        "id": "wB",
+        "kind": "worker",
+        "color": "#3498db",
+        "capacity": 2,
+        "name": "romeo"
+      },
+      {
+        "id": "wC",
+        "kind": "worker",
+        "color": "#f1c40f",
+        "capacity": 3,
+        "name": "fred"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "i4",
+      "templateId": "oA",
+      "x": 560,
+      "y": 520,
+      "color": "#2f6fd6",
+      "items": 0
+    },
+    {
+      "id": "i5",
+      "templateId": "oA",
+      "x": 840,
+      "y": 520,
+      "color": "#2f6fd6",
+      "items": 0
+    }
+  ],
+  "routes": [
+    {
+      "id": "i6",
+      "fromId": "i4",
+      "toId": "i5",
+      "color": "#e63946",
+      "workerId": "i3"
+    }
+  ],
+  "workers": [
+    {
+      "id": "i1",
+      "templateId": "wA",
+      "color": "#e74c3c",
+      "capacity": 1,
+      "x": 160,
+      "y": 160,
+      "routeId": null,
+      "carrying": 0,
+      "segIdx": 0,
+      "segT": 0,
+      "dir": 1,
+      "targetX": null,
+      "targetY": null
+    },
+    {
+      "id": "i2",
+      "templateId": "wB",
+      "color": "#3498db",
+      "capacity": 2,
+      "x": 160,
+      "y": 240,
+      "routeId": null,
+      "carrying": 0,
+      "segIdx": 0,
+      "segT": 0,
+      "dir": 1,
+      "targetX": null,
+      "targetY": null
+    },
+    {
+      "id": "i3",
+      "templateId": "wC",
+      "color": "#f1c40f",
+      "capacity": 3,
+      "x": 649.5217325996131,
+      "y": 501.30434540726424,
+      "routeId": "i6",
+      "carrying": 0,
+      "segIdx": 0,
+      "segT": 0,
+      "dir": 1,
+      "targetX": 700,
+      "targetY": 520
+    }
+  ],
+  "viewModes": {
+    "ViewDefault": {
+      "visible": {
+        "workers": "visible",
+        "workerLabels": "visible",
+        "piles": "visible",
+        "pileItems": "visible",
+        "routes": "hidden",
+        "routeEnds": "hidden",
+        "routeSlots": "hidden",
+        "grid": "visible"
+      }
+    },
+    "ViewRoutes": {
+      "visible": {
+        "workers": "visible",
+        "workerLabels": "visible",
+        "piles": "visible",
+        "pileItems": "visible",
+        "routes": "visible",
+        "routeEnds": "visible",
+        "routeSlots": "visible",
+        "grid": "visible"
+      }
+    }
+  },
+  "nextId": 7,
+  "routeColorIdx": 1
+}

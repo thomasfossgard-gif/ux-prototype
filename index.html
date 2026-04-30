@@ -6,18 +6,18 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; height: 100vh; overflow: hidden; background: #1a1d23; color: #e8e8e8; user-select: none; }
-  #app { display: grid; grid-template-rows: 1fr; grid-template-columns: 64px 1fr; height: 100vh; }
+  #app { display: grid; grid-template-rows: 1fr; grid-template-columns: 1fr; height: 100vh; }
   #top-palette { position: fixed; bottom: 16px; left: 25%; right: 25%; background: #232730; border: 1px solid #333; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; z-index: 6; }
   #tabs { display: flex; gap: 4px; padding: 6px 12px 0; align-items: center; }
   .tab { padding: 6px 14px; background: #2c313c; border: none; color: #aaa; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 12px; }
   .tab.active { background: #3a4150; color: #fff; }
-  #palette-items { display: flex; gap: 10px; padding: 8px 12px; align-items: center; min-height: 60px; flex-wrap: wrap; }
+  .palette-pane { display: flex; gap: 10px; padding: 8px 12px; align-items: center; min-height: 60px; flex-wrap: wrap; }
+  .palette-pane[hidden] { display: none; }
   .palette-item { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: grab; border-radius: 6px; background: #2c313c; position: relative; transition: outline 0.1s; }
   .palette-item.in-use { opacity: 0.5; }
   .palette-item:hover { outline: 2px solid #4a90e2; }
   .swatch-circle { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; }
-  .swatch-square { width: 30px; height: 30px; border-radius: 0; border: 2px solid #fff; background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px); background-size: 5px 5px; }
-  #left-tools { background: #232730; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 6px; padding: 10px 8px; }
+  .swatch-square { width: 30px; height: 30px; border-radius: 0; border: none; background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px); background-size: 5px 5px; }
   .tool-btn { width: 48px; height: 48px; background: #2c313c; border: none; color: #ccc; cursor: pointer; border-radius: 6px; font-size: 11px; padding: 4px; line-height: 1.1; }
   .tool-btn.active { background: #4a90e2; color: #fff; }
   .tool-btn:hover:not(.active) { background: #3a4150; }
@@ -105,9 +105,23 @@
   .dbg-vis-btn { padding: 2px 10px; border: 1px solid; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: 600; }
   .dbg-vis-btn.on  { background: rgba(74,144,226,0.12); border-color: #4a90e2; color: #7ab4f5; }
   .dbg-vis-btn.off { background: rgba(80,80,80,0.10);   border-color: #3a3d45; color: #555; }
+  .dbg-vis-btn.state-visible     { background: rgba(74,144,226,0.12); border-color: #4a90e2; color: #7ab4f5; }
+  .dbg-vis-btn.state-hidden      { background: rgba(80,80,80,0.10);   border-color: #3a3d45; color: #777; }
+  .dbg-vis-btn.state-highlighted { background: rgba(241,196,15,0.15); border-color: #f1c40f; color: #ffd95e; }
   .dbg-inst-dot { color: #555; font-size: 9px; }
   .dbg-inst-dot.on { color: #4a90e2; }
   #debug-viewmodes-pane, #debug-options-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
+  .dbg-section-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 10px 8px 6px; font-weight: 700; border-top: 1px solid #1c1c1c; margin: 0; }
+  #instance-state-table { width: 100%; border-collapse: collapse; }
+  #instance-state-table thead th { padding: 5px 8px; text-align: left; font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2d35; }
+  #instance-state-table thead th:last-child { text-align: center; }
+  #instance-state-table td { padding: 4px 8px; border-bottom: 1px solid #1c1c1c; font-size: 12px; color: #ccc; }
+  #instance-state-table td:last-child { text-align: center; font-variant-numeric: tabular-nums; }
+  #instance-state-table .istate-type-row td { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding-top: 8px; }
+  #instance-state-table .istate-empty td { color: #555; font-size: 10px; padding: 6px 8px; font-style: italic; }
+  #instance-state-table .istate-row.has td:last-child { color: #7ab4f5; font-weight: 700; }
+  #instance-state-table .istate-row.zero td:last-child { color: #555; }
+  #debug-viewmodes-pane[hidden], #debug-options-pane[hidden] { display: none; }
   .options-section { padding: 10px 12px; }
   .options-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
   .options-table { width: 100%; border-collapse: collapse; }
@@ -122,15 +136,16 @@
 <div id="app">
   <div id="top-palette">
     <div id="tabs">
-      <button class="tab active" data-tab="objects">Piles</button>
+      <button class="tab" data-tab="actions">Actions</button>
+      <button class="tab active" data-tab="objects">Build</button>
     </div>
-    <div id="palette-items"></div>
-  </div>
-  <div id="left-tools">
-    <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
-    <button class="tool-btn" data-tool="line" title="Draw a new Route between two piles">Draw<br>New<br>Route</button>
-    <button class="tool-btn" data-tool="addItem" title="Click an object to add a triangle">+ &#9650;</button>
-    <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
+    <div id="palette-actions" class="palette-pane" hidden>
+      <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
+      <button class="tool-btn" data-tool="line" title="Draw a new Route between two piles">Draw<br>New<br>Route</button>
+      <button class="tool-btn" data-tool="addItem" title="Click an object to add a triangle">+ &#9650;</button>
+      <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
+    </div>
+    <div id="palette-items" class="palette-pane"></div>
   </div>
   <div id="canvas-container">
     <div id="canvas"></div>
@@ -156,9 +171,15 @@
   <div id="debug-viewmodes-pane">
     <div id="debug-mode-btns"></div>
     <div id="debug-content">
+      <h5 class="dbg-section-title">View Mode Visibility</h5>
       <table id="debug-table">
         <thead><tr><th>Type</th><th>Visible</th></tr></thead>
         <tbody id="debug-type-rows"></tbody>
+      </table>
+      <h5 class="dbg-section-title">Instance States</h5>
+      <table id="instance-state-table">
+        <thead><tr><th>Type / State</th><th>Count</th></tr></thead>
+        <tbody id="instance-state-rows"></tbody>
       </table>
     </div>
   </div>
@@ -169,6 +190,14 @@
         <thead><tr><th>Type</th><th>Show</th></tr></thead>
         <tbody id="hitbox-rows"></tbody>
       </table>
+    </div>
+    <div class="options-section">
+      <h4 class="options-title">Level</h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button id="btn-save-level" class="dbg-mode-btn">Save Level…</button>
+        <button id="btn-load-level" class="dbg-mode-btn">Load Level…</button>
+      </div>
+      <div id="level-status" style="font-size:10px;color:#666;margin-top:6px;min-height:12px"></div>
     </div>
   </div>
 </div>
@@ -204,18 +233,64 @@ let activeTab = 'objects';
 let selectedWorkerId = null;
 
 // ===== MODE SYSTEM =====
-// Single source of truth for what the player is currently doing.
-// All contextual visibility / cursor / tool-highlight changes flow through applyMode().
+// Two-layer system:
+//   GAME MODES — what the player is doing (set by tools + gestures). Controls cursor,
+//                tool highlight, label.
+//   VIEW MODES — what is visible (presentation only). Each game mode maps to a default
+//                view; a separate viewFocusStack can transiently push a different view
+//                without disturbing the game mode (e.g. hovering a pile in gameInteract
+//                shows routes by pushing 'ViewRoutes' on the stack).
+// View mode = single record per view: display label + per-type visibility state.
+// State values: 'hidden' | 'visible' | 'highlighted'. ('highlighted' renders the
+// same as 'visible' for now — placeholder until per-type highlighting lands.)
+const VIEW_MODES = {
+  ViewDefault: { display: 'View Default', visible: {} },
+  ViewRoutes:  { display: 'View Routes',  visible: {} },
+};
+const VIS_STATES = ['visible', 'hidden', 'highlighted']; // cycle order on toggle
 const MODES = {
-  gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default'     },
-  drawRoutes:     { display: 'Draw Routes',     tool: 'line',    cursor: 'crosshair'   },
-  addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy'        },
-  deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed' },
-  liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing'    },
+  gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default',     view: 'ViewDefault' },
+  drawRoutes:   { display: 'Draw Routes',   tool: 'line',    cursor: 'crosshair',   view: 'ViewRoutes' },
+  addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy',        view: 'ViewDefault' },
+  deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed', view: 'ViewDefault' },
+  liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewRoutes' },
 };
 const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode' };
 let currentMode = 'gameInteract';
-let prevMode = null; // saved mode while a transient mode (liftWorker) is active
+let prevMode = null; // saved game mode while a transient game mode (liftWorker) is active
+const viewFocusStack = []; // ordered list of pushed view-mode names; topmost wins
+function pushViewFocus(view) { viewFocusStack.push(view); applyDebugVisibility(); }
+function popViewFocus()       { viewFocusStack.pop();      applyDebugVisibility(); }
+
+// "Held" route view — set after a route is created so it stays visible until the
+// user clicks something else (e.g. empty canvas, a worker, a tool). Clicking another
+// pile or starting a new route doesn't release it.
+let routeViewHeld = false;
+let recentlyCreatedRouteId = null;
+function holdRouteView(routeId) {
+  if (routeViewHeld) return;
+  routeViewHeld = true;
+  recentlyCreatedRouteId = routeId || null;
+  if (recentlyCreatedRouteId) {
+    const r = routes.find(x => x.id === recentlyCreatedRouteId);
+    if (r) { if (!r.states) r.states = {}; r.states.recentlyCreated = true; }
+  }
+  pushViewFocus('ViewRoutes');
+}
+function releaseHeldRouteView() {
+  if (!routeViewHeld) return;
+  routeViewHeld = false;
+  if (recentlyCreatedRouteId) {
+    const r = routes.find(x => x.id === recentlyCreatedRouteId);
+    if (r && r.states) r.states.recentlyCreated = false;
+    recentlyCreatedRouteId = null;
+  }
+  popViewFocus();
+}
+function getEffectiveView() {
+  if (viewFocusStack.length) return viewFocusStack[viewFocusStack.length - 1];
+  return MODES[currentMode].view;
+}
 
 function setMode(name) {
   if (!MODES[name]) return;
@@ -230,6 +305,20 @@ function pushTransientMode(name) {
 }
 function popTransientMode() {
   if (prevMode) { currentMode = prevMode; prevMode = null; applyMode(); }
+}
+
+// Reference-counted pile focus: any number of things (hovering a pile in the level,
+// hovering a pile in the palette, dragging a pile out of the palette) can request
+// the Route View visual mode. View-only — does NOT change the game mode.
+let pileFocusDepth = 0;
+function enterPileFocus() {
+  pileFocusDepth++;
+  if (pileFocusDepth === 1) pushViewFocus('ViewRoutes');
+}
+function leavePileFocus() {
+  if (pileFocusDepth === 0) return;
+  pileFocusDepth--;
+  if (pileFocusDepth === 0) popViewFocus();
 }
 
 // Central place for all mode-driven visual changes.
@@ -286,6 +375,16 @@ const workerLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
 stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
 
+// Konva's getPointerPosition returns SCREEN-relative coords (within the stage container),
+// not world coords. With pan/zoom on, anything that compares against world-space data
+// (node positions, slot positions, snap-to-grid, ghost placement) must use this helper.
+function getWorldPointer() {
+  const p = stage.getPointerPosition();
+  if (!p) return null;
+  const scale = stage.scaleX() || 1;
+  return { x: (p.x - stage.x()) / scale, y: (p.y - stage.y()) / scale };
+}
+
 window.addEventListener('resize', () => {
   stage.width(containerEl.clientWidth);
   stage.height(containerEl.clientHeight);
@@ -294,19 +393,97 @@ window.addEventListener('resize', () => {
 
 function drawGrid() {
   gridLayer.destroyChildren();
-  const W = stage.width(), H = stage.height();
-  for (let x = 0; x <= W; x += GRID) {
-    gridLayer.add(new Konva.Line({ points: [x, 0, x, H], stroke: '#1a1d23', strokeWidth: 1 }));
+  const scale = stage.scaleX() || 1;
+  const sx = stage.x(), sy = stage.y();
+  // Visible world coords
+  const x0 = -sx / scale, y0 = -sy / scale;
+  const x1 = (stage.width() - sx) / scale;
+  const y1 = (stage.height() - sy) / scale;
+  const gx0 = Math.floor(x0 / GRID) * GRID;
+  const gy0 = Math.floor(y0 / GRID) * GRID;
+  const gx1 = Math.ceil(x1 / GRID) * GRID;
+  const gy1 = Math.ceil(y1 / GRID) * GRID;
+  const sw = 1 / scale; // keep grid lines 1px on screen
+  for (let x = gx0; x <= gx1; x += GRID) {
+    gridLayer.add(new Konva.Line({ points: [x, gy0, x, gy1], stroke: '#1a1d23', strokeWidth: sw }));
   }
-  for (let y = 0; y <= H; y += GRID) {
-    gridLayer.add(new Konva.Line({ points: [0, y, W, y], stroke: '#1a1d23', strokeWidth: 1 }));
+  for (let y = gy0; y <= gy1; y += GRID) {
+    gridLayer.add(new Konva.Line({ points: [gx0, y, gx1, y], stroke: '#1a1d23', strokeWidth: sw }));
   }
   gridLayer.batchDraw();
 }
 drawGrid();
 
+// ===== PAN & ZOOM =====
+const ZOOM_FACTOR = 1.1;
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 3;
+stage.on('wheel', e => {
+  e.evt.preventDefault();
+  const oldScale = stage.scaleX();
+  const pointer = stage.getPointerPosition();
+  if (!pointer) return;
+  const worldPoint = {
+    x: (pointer.x - stage.x()) / oldScale,
+    y: (pointer.y - stage.y()) / oldScale,
+  };
+  let newScale = e.evt.deltaY < 0 ? oldScale * ZOOM_FACTOR : oldScale / ZOOM_FACTOR;
+  newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newScale));
+  stage.scale({ x: newScale, y: newScale });
+  stage.position({
+    x: pointer.x - worldPoint.x * newScale,
+    y: pointer.y - worldPoint.y * newScale,
+  });
+  drawGrid();
+  stage.batchDraw();
+});
+
+// Pan only when LMB-down on empty canvas (not on a shape).
+let panStart = null;
+stage.on('mousedown', e => {
+  if (e.evt.button !== 0) return;
+  if (e.target !== stage) return; // ignore if a shape was hit
+  panStart = {
+    cx: e.evt.clientX, cy: e.evt.clientY,
+    sx: stage.x(),     sy: stage.y(),
+  };
+  containerEl.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!panStart) return;
+  stage.x(panStart.sx + (e.clientX - panStart.cx));
+  stage.y(panStart.sy + (e.clientY - panStart.cy));
+  drawGrid();
+  stage.batchDraw();
+});
+window.addEventListener('mouseup', () => {
+  if (!panStart) return;
+  panStart = null;
+  containerEl.style.cursor = MODES[currentMode].cursor;
+});
+
 // suppress browser context menu over canvas
 containerEl.addEventListener('contextmenu', e => e.preventDefault());
+
+// Release the held route view when the user clicks something that isn't a pile
+// (or a pile's child anchor). Clicks on piles or anchors keep the routes visible
+// because the user is likely continuing to work with routes.
+stage.on('mousedown.routeview', e => {
+  if (!routeViewHeld) return;
+  let n = e.target;
+  while (n && n !== stage) {
+    if (n.name && n.name() === 'node') return;
+    n = n.getParent && n.getParent();
+  }
+  releaseHeldRouteView();
+});
+document.addEventListener('mousedown', e => {
+  if (!routeViewHeld) return;
+  // Canvas mousedowns are handled by the Konva listener above; only react to
+  // clicks outside the canvas (tool buttons, palette, debug panel, etc.).
+  if (containerEl.contains(e.target)) return;
+  releaseHeldRouteView();
+}, true);
 
 // ===== PALETTE UI =====
 function isInUse(tplId) {
@@ -315,7 +492,9 @@ function isInUse(tplId) {
 function renderPalette() {
   const cont = document.getElementById('palette-items');
   cont.innerHTML = '';
-  palette[activeTab].forEach(tpl => {
+  const items = palette[activeTab];
+  if (!items) return;
+  items.forEach(tpl => {
     const el = document.createElement('div');
     el.className = 'palette-item';
     if (isInUse(tpl.id)) el.classList.add('in-use');
@@ -332,15 +511,22 @@ function renderPalette() {
     }
     el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
     el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
+    if (tpl.kind === 'object') {
+      el.addEventListener('mouseenter', () => enterPileFocus());
+      el.addEventListener('mouseleave', () => leavePileFocus());
+    }
     cont.appendChild(el);
   });
 }
-document.querySelectorAll('.tab').forEach(b => {
+document.querySelectorAll('#tabs .tab').forEach(b => {
   b.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('#tabs .tab').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     activeTab = b.dataset.tab;
-    renderPalette();
+    // Show the matching pane; hide the others.
+    document.getElementById('palette-actions').hidden = (activeTab !== 'actions');
+    document.getElementById('palette-items').hidden = (activeTab !== 'objects');
+    if (activeTab === 'objects') renderPalette();
   });
 });
 
@@ -360,18 +546,36 @@ function startPaletteDrag(e, tpl, sourceEl) {
   dragTpl = tpl; dragMoved = false;
   ghostEl = document.createElement('div');
   ghostEl.id = 'ghost';
-  ghostEl.style.cssText = 'width:40px;height:40px;border:2px solid #fff;background:' + tpl.color + ';border-radius:' + (tpl.kind === 'worker' ? '50%' : '6px');
+  const isWorker = tpl.kind === 'worker';
+  const size = isWorker ? 26 : 44;
+  const radius = isWorker ? '5px' : '0';
+  // Match the in-level look: solid fill, no white border, dot pattern overlay for piles.
+  const dotsBg = isWorker
+    ? ''
+    : ';background-image:radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);background-size:6px 6px';
+  ghostEl.style.cssText =
+    'width:' + size + 'px;height:' + size + 'px;background-color:' + tpl.color +
+    ';border-radius:' + radius + dotsBg;
   document.body.appendChild(ghostEl);
-  moveGhost(e.clientX, e.clientY);
+  movePaletteGhost(e.clientX, e.clientY);
+  // Lifting a pile temporarily switches to Draw Routes view so the player sees existing routes.
+  if (tpl.kind === 'object') enterPileFocus();
   document.addEventListener('mousemove', onPaletteDragMove);
   document.addEventListener('mouseup', onPaletteDragEnd);
 }
-function moveGhost(x, y) { if (ghostEl) { ghostEl.style.left = (x - 20) + 'px'; ghostEl.style.top = (y - 20) + 'px'; } }
-function onPaletteDragMove(e) { dragMoved = true; moveGhost(e.clientX, e.clientY); }
+function movePaletteGhost(x, y) {
+  if (!ghostEl) return;
+  const half = (ghostEl.offsetWidth || 44) / 2;
+  ghostEl.style.left = (x - half) + 'px';
+  ghostEl.style.top = (y - half) + 'px';
+}
+function onPaletteDragMove(e) { dragMoved = true; movePaletteGhost(e.clientX, e.clientY); }
 function onPaletteDragEnd(e) {
   document.removeEventListener('mousemove', onPaletteDragMove);
   document.removeEventListener('mouseup', onPaletteDragEnd);
   if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+  // Restore whatever mode we were in before the palette lift.
+  if (dragTpl && dragTpl.kind === 'object') leavePileFocus();
   if (dragMoved) {
     const r = containerEl.getBoundingClientRect();
     if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
@@ -388,7 +592,10 @@ function onPaletteDragEnd(e) {
 
 // ===== PLACE / DRAW NODES =====
 function placeNode(tpl, x, y) {
-  const node = { id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0 };
+  const node = {
+    id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0,
+    states: { hovered: false },
+  };
   nodes.push(node);
   drawNode(node);
   hideHint();
@@ -409,6 +616,113 @@ const STRIPE_PATTERN = (() => {
   ctx.stroke();
   return c;
 })();
+// Pile connection anchors — small handles on each side that workers' routes attach to.
+// Hidden by default; shown on pile hover and during a line draft (all piles' anchors light up).
+const ANCHORS = ['top', 'right', 'bottom', 'left'];
+const ANCHOR_OFFSETS = {
+  top:    { x: 0,   y: -22 },
+  right:  { x: 22,  y: 0   },
+  bottom: { x: 0,   y: 22  },
+  left:   { x: -22, y: 0   },
+};
+function anchorPos(node, key) {
+  const off = ANCHOR_OFFSETS[key] || { x: 0, y: 0 };
+  return { x: node.x + off.x, y: node.y + off.y };
+}
+function defaultAnchorsBetween(fromNode, toNode) {
+  const dx = toNode.x - fromNode.x;
+  const dy = toNode.y - fromNode.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { from: dx >= 0 ? 'right' : 'left', to: dx >= 0 ? 'left' : 'right' };
+  }
+  return { from: dy >= 0 ? 'bottom' : 'top', to: dy >= 0 ? 'top' : 'bottom' };
+}
+function routeEndpoints(route) {
+  const fn = nodes.find(n => n.id === route.fromId);
+  const tn = nodes.find(n => n.id === route.toId);
+  if (!fn || !tn) return null;
+  let fromKey = route.fromAnchor;
+  let toKey = route.toAnchor;
+  if (!fromKey || !toKey) {
+    const d = defaultAnchorsBetween(fn, tn);
+    fromKey = fromKey || d.from; toKey = toKey || d.to;
+  }
+  return { fn, tn, fromKey, toKey, from: anchorPos(fn, fromKey), to: anchorPos(tn, toKey) };
+}
+// Snap target while drafting a route. Hits the closest anchor on any pile other than the source,
+// either directly (small radius around the anchor) or via the pile body (snap to closest anchor).
+function anchorAtPoint(x, y, srcNodeId) {
+  let best = null, bestD = Infinity;
+  for (const n of nodes) {
+    if (n.id === srcNodeId) continue;
+    // Direct anchor proximity
+    for (const key of ANCHORS) {
+      const ap = anchorPos(n, key);
+      const dx = ap.x - x, dy = ap.y - y;
+      const d = dx*dx + dy*dy;
+      if (d <= 12*12 && d < bestD) { bestD = d; best = { node: n, key }; }
+    }
+    // Body proximity → snap to closest anchor of this pile
+    const ddx = n.x - x, ddy = n.y - y;
+    if (ddx*ddx + ddy*ddy <= 24*24) {
+      let cKey = null, cDist = Infinity;
+      for (const key of ANCHORS) {
+        const ap = anchorPos(n, key);
+        const ax = ap.x - x, ay = ap.y - y;
+        const dd = ax*ax + ay*ay;
+        if (dd < cDist) { cDist = dd; cKey = key; }
+      }
+      if (cKey && cDist < bestD) { bestD = cDist; best = { node: n, key: cKey }; }
+    }
+  }
+  return best;
+}
+// ============================================================================
+// INSTANCE STATES
+// Each visual entity carries a `states` bag — boolean tags set by game logic.
+// Visual rendering = (view-mode global rule) + (state-driven decoration).
+// applyXState(entity) computes the on-screen presentation for one entity from
+// its current states; refreshAllX() runs over all of that type.
+// ============================================================================
+function applyPileState(node) {
+  const grp = nodeLayer.findOne('#' + node.id); if (!grp) return;
+  // Anchors visible when this pile is hovered OR a line draft is in progress globally.
+  const showAnchors = !!(node.states && node.states.hovered) || !!lineDraft;
+  grp.find('.anchor').forEach(a => a.visible(showAnchors));
+}
+function refreshAllPiles() {
+  nodes.forEach(applyPileState);
+  nodeLayer.batchDraw();
+}
+function setPileState(node, key, value) {
+  if (!node.states) node.states = {};
+  node.states[key] = !!value;
+  applyPileState(node);
+  nodeLayer.batchDraw();
+}
+function applyWorkerState(w) {
+  const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
+  const c = grp.findOne('.workercircle');
+  if (w.states && w.states.selected) {
+    c.strokeWidth(4);
+    c.shadowColor('#ffffff'); c.shadowBlur(14); c.shadowOpacity(0.85);
+  } else {
+    c.strokeWidth(1.5);
+    c.shadowOpacity(0); c.shadowBlur(0);
+  }
+}
+function refreshAllWorkers() {
+  workers.forEach(applyWorkerState);
+  workerLayer.batchDraw();
+}
+function setWorkerState(w, key, value) {
+  if (!w.states) w.states = {};
+  w.states[key] = !!value;
+  applyWorkerState(w);
+  workerLayer.batchDraw();
+}
+function setAllAnchorsVisible(_visible) { refreshAllPiles(); } // legacy shim — line-draft state now drives anchor visibility globally
+
 const PILE_DOT_PATTERN = (() => {
   const c = document.createElement('canvas');
   c.width = 6; c.height = 6;
@@ -419,12 +733,43 @@ const PILE_DOT_PATTERN = (() => {
 })();
 function drawNode(node) {
   const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
-  const shape = new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: '#fff', strokeWidth: 2, name: 'nodeshape' });
+  const shape = new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: node.color, strokeWidth: 1.5, name: 'nodeshape' });
   const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
-  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: hitboxShow.piles });
+  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
   const stack = new Konva.Group({ name: 'stack' });
   grp.add(shape, tex, hitbox, stack);
+  // Connection anchors — one per side. Hidden by default; revealed on hover or during line draft.
+  ANCHORS.forEach(key => {
+    const off = ANCHOR_OFFSETS[key];
+    const a = new Konva.Circle({
+      x: off.x, y: off.y, radius: 5,
+      fill: '#fff', stroke: '#222', strokeWidth: 1.5,
+      name: 'anchor', visible: false,
+    });
+    a.anchorKey = key;
+    a.nodeRef = node;
+    a.on('mousedown', e => onAnchorMouseDown(e, node, key));
+    a.on('mouseenter', () => {
+      containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer";
+      a.scale({ x: 1.5, y: 1.5 });
+      nodeLayer.batchDraw();
+    });
+    a.on('mouseleave', () => {
+      containerEl.style.cursor = MODES[currentMode].cursor;
+      a.scale({ x: 1, y: 1 });
+      nodeLayer.batchDraw();
+    });
+    grp.add(a);
+  });
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
+  grp.on('mouseenter', () => {
+    enterPileFocus();
+    setPileState(node, 'hovered', true);
+  });
+  grp.on('mouseleave', () => {
+    leavePileFocus();
+    setPileState(node, 'hovered', false);
+  });
   nodeLayer.add(grp);
   updateNodeStack(node);
   nodeLayer.batchDraw();
@@ -448,7 +793,9 @@ function updateNodeStack(node) {
 function placeWorker(tpl, x, y) {
   const w = {
     id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
-    x: x, y: y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1
+    x: x, y: y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1,
+    targetX: null, targetY: null,
+    states: { selected: false, lifting: false },
   };
   workers.push(w);
   drawWorker(w);
@@ -460,8 +807,8 @@ function drawWorker(w) {
   const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
 
   const grp = new Konva.Group({ x: w.x, y: w.y, id: w.id, name: 'worker' });
-  const c = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, cornerRadius: 5, fill: w.color, stroke: '#fff', strokeWidth: 2, name: 'workercircle' });
-  const hitbox = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: hitboxShow.workers });
+  const c = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, cornerRadius: 5, fill: w.color, stroke: w.color, strokeWidth: 1.5, name: 'workercircle' });
+  const hitbox = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
   // small carry indicator
   const carry = new Konva.RegularPolygon({ sides: 3, radius: 5, fill: '#f1c40f', stroke: '#fff', strokeWidth: 1, y: 0, name: 'carry', visible: false });
   if (displayName) {
@@ -474,6 +821,41 @@ function drawWorker(w) {
   grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; });
   grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
   workerLayer.add(grp);
+
+  // Per-worker ghost — same body shape, white at 30% opacity. Persistent shape, hidden by default.
+  // Visible while lifting (follows cursor) and while the worker is walking toward its commanded target.
+  const ghostBody = new Konva.Rect({
+    x: -13, y: -13, width: 26, height: 26, cornerRadius: 5,
+    fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.5)', strokeWidth: 1.5,
+    listening: false,
+  });
+  const ghostGrp = new Konva.Group({
+    x: w.x, y: w.y, id: 'ghost_' + w.id, name: 'worker-ghost',
+    visible: false, listening: false,
+  });
+  ghostGrp.add(ghostBody);
+  workerLayer.add(ghostGrp);
+
+  workerLayer.batchDraw();
+}
+function showGhost(w, x, y) {
+  const g = workerLayer.findOne('#ghost_' + w.id);
+  if (!g) return;
+  g.position({ x, y });
+  g.visible(true);
+  g.moveToTop();
+  workerLayer.batchDraw();
+}
+function moveGhost(w, x, y) {
+  const g = workerLayer.findOne('#ghost_' + w.id);
+  if (!g) return;
+  g.position({ x, y });
+  workerLayer.batchDraw();
+}
+function hideGhost(w) {
+  const g = workerLayer.findOne('#ghost_' + w.id);
+  if (!g) return;
+  g.visible(false);
   workerLayer.batchDraw();
 }
 function updateWorkerVisual(w) {
@@ -483,6 +865,86 @@ function updateWorkerVisual(w) {
   const carry = grp.findOne('.carry');
   if (w.carrying > 0) { carry.visible(true); carry.fill('#f1c40f'); }
   else carry.visible(false);
+}
+
+// ===== ANCHOR DIRECTIONS =====
+// Each anchor side has a unit "outward" direction. Routes leave/arrive perpendicular
+// to the pile's side, so the first/last segment of any route is always in this direction.
+const ANCHOR_DIRS = {
+  top:    { x: 0,  y: -1 },
+  right:  { x: 1,  y:  0 },
+  bottom: { x: 0,  y:  1 },
+  left:   { x: -1, y:  0 },
+};
+function anchorDir(key) { return ANCHOR_DIRS[key] || { x: 1, y: 0 }; }
+
+// Build a list of orthogonal waypoints between two anchors that respects both directions:
+// each route stubs out perpendicular to its source side and arrives perpendicular to its
+// target side. `stub` is the length of the perpendicular leg before the path can turn.
+function rectilinearWaypoints(fromX, fromY, fromDir, toX, toY, toDir, stub = 18) {
+  const A  = { x: fromX, y: fromY };
+  const Ap = { x: fromX + fromDir.x * stub, y: fromY + fromDir.y * stub };
+  const B  = { x: toX, y: toY };
+  const Bp = { x: toX + toDir.x * stub, y: toY + toDir.y * stub };
+  const fromHoriz = fromDir.x !== 0;
+  const toHoriz   = toDir.x !== 0;
+  let pts;
+  if (fromHoriz && toHoriz) {
+    const midX = (Ap.x + Bp.x) / 2;
+    pts = [A, Ap, { x: midX, y: Ap.y }, { x: midX, y: Bp.y }, Bp, B];
+  } else if (!fromHoriz && !toHoriz) {
+    const midY = (Ap.y + Bp.y) / 2;
+    pts = [A, Ap, { x: Ap.x, y: midY }, { x: Bp.x, y: midY }, Bp, B];
+  } else if (fromHoriz && !toHoriz) {
+    pts = [A, Ap, { x: Bp.x, y: Ap.y }, Bp, B];
+  } else {
+    pts = [A, Ap, { x: Ap.x, y: Bp.y }, Bp, B];
+  }
+  // Drop consecutive duplicates so degenerate cases (aligned anchors) don't add zero-length corners.
+  return pts.filter((p, i) => i === 0 || p.x !== pts[i-1].x || p.y !== pts[i-1].y);
+}
+
+function pointsToPathData(pts, radius = 14) {
+  if (!pts || pts.length < 2) return '';
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i-1], curr = pts[i], next = pts[i+1];
+    const v1x = curr.x - prev.x, v1y = curr.y - prev.y;
+    const l1 = Math.hypot(v1x, v1y) || 1;
+    const v2x = next.x - curr.x, v2y = next.y - curr.y;
+    const l2 = Math.hypot(v2x, v2y) || 1;
+    const r = Math.min(radius, l1 / 2, l2 / 2);
+    const bx = curr.x - (v1x / l1) * r, by = curr.y - (v1y / l1) * r;
+    const ax = curr.x + (v2x / l2) * r, ay = curr.y + (v2y / l2) * r;
+    d += ` L ${bx} ${by} Q ${curr.x} ${curr.y} ${ax} ${ay}`;
+  }
+  d += ` L ${pts[pts.length-1].x} ${pts[pts.length-1].y}`;
+  return d;
+}
+
+function rectilinearPathData(fromX, fromY, fromDir, toX, toY, toDir, stub = 18, radius = 14) {
+  return pointsToPathData(rectilinearWaypoints(fromX, fromY, fromDir, toX, toY, toDir, stub), radius);
+}
+
+// Line-draft path: source has a known anchor direction, target is whatever the cursor is over.
+// Stubs out from the source perpendicular to its side, then bends to the cursor.
+function draftPathData(fromX, fromY, fromDir, toX, toY, stub = 18, radius = 14) {
+  const stubEnd = { x: fromX + fromDir.x * stub, y: fromY + fromDir.y * stub };
+  const pts = fromDir.x !== 0
+    ? [{x:fromX,y:fromY}, stubEnd, {x:stubEnd.x, y:toY}, {x:toX, y:toY}]
+    : [{x:fromX,y:fromY}, stubEnd, {x:toX, y:stubEnd.y}, {x:toX, y:toY}];
+  return pointsToPathData(pts.filter((p, i) => i === 0 || p.x !== pts[i-1].x || p.y !== pts[i-1].y), radius);
+}
+
+// Route convenience wrappers — resolve endpoints + directions in one place.
+function routePathData(route) {
+  const ep = routeEndpoints(route); if (!ep) return '';
+  return rectilinearPathData(ep.from.x, ep.from.y, anchorDir(ep.fromKey), ep.to.x, ep.to.y, anchorDir(ep.toKey));
+}
+function routeWaypoints(route) {
+  const ep = routeEndpoints(route); if (!ep) return [];
+  return rectilinearWaypoints(ep.from.x, ep.from.y, anchorDir(ep.fromKey), ep.to.x, ep.to.y, anchorDir(ep.toKey));
 }
 
 // ===== ORTHOGONAL PATH (single-bend L with rounded corner) =====
@@ -502,6 +964,22 @@ function orthoPathData(x1, y1, x2, y2) {
 function orthoWaypoints(x1, y1, x2, y2) {
   if (Math.abs(x2 - x1) < 1 || Math.abs(y2 - y1) < 1) return [{x:x1,y:y1},{x:x2,y:y2}];
   return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2}];
+}
+function fractionToSegment(wp, frac) {
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < wp.length - 1; i++) {
+    const len = Math.hypot(wp[i+1].x - wp[i].x, wp[i+1].y - wp[i].y);
+    segs.push(len); total += len;
+  }
+  let target = total * frac;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i]) {
+      return { segIdx: i, segT: segs[i] === 0 ? 0 : target / segs[i] };
+    }
+    target -= segs[i];
+  }
+  return { segIdx: wp.length - 2, segT: 1 };
 }
 function pointAtFraction(wp, frac) {
   let total = 0;
@@ -529,8 +1007,8 @@ function onNodeMouseDown(e, node, grp) {
     return;
   }
   if (currentMode === 'drawRoutes') {
-    e.cancelBubble = true;
-    startLineDraft(node);
+    // Routes now start exclusively from anchor circles. Body clicks are no-ops in this mode.
+    return;
   } else if (currentMode === 'addItems') {
     e.cancelBubble = true;
     node.items++;
@@ -545,7 +1023,7 @@ function onNodeMouseDown(e, node, grp) {
 }
 function startNodeMove(node, grp) {
   const onMove = () => {
-    const p = stage.getPointerPosition();
+    const p = getWorldPointer();
     if (!p) return;
     node.x = snap(p.x); node.y = snap(p.y);
     grp.position({ x: node.x, y: node.y });
@@ -560,14 +1038,24 @@ function startNodeMove(node, grp) {
   stage.on('mouseup.nodedrag', onUp);
 }
 
-function startLineDraft(fromNode) {
+function onAnchorMouseDown(e, node, anchorKey) {
+  if (e.evt.button !== 0) return;
+  e.cancelBubble = true;
+  startLineDraft(node, anchorKey);
+}
+function startLineDraft(fromNode, fromAnchorKey) {
   cancelLineDraft();
   const previewColor = peekRouteColor();
+  const from = fromAnchorKey
+    ? anchorPos(fromNode, fromAnchorKey)
+    : { x: fromNode.x, y: fromNode.y };
   const path = new Konva.Path({ stroke: previewColor, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
-  const endA = new Konva.Circle({ x: fromNode.x, y: fromNode.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
-  const endB = new Konva.Circle({ x: fromNode.x, y: fromNode.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
+  const endA = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
+  const endB = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
   uiLayer.add(path, endA, endB);
-  lineDraft = { fromNode, path, endA, endB, previewColor };
+  lineDraft = { fromNode, fromAnchorKey, fromX: from.x, fromY: from.y, path, endA, endB, previewColor };
+  pushViewFocus('ViewRoutes'); // keep routes visible for the whole drag, even off the pile
+  setAllAnchorsVisible(true); // reveal anchors on every pile so the user can target one
   uiLayer.batchDraw();
 }
 function cancelLineDraft() {
@@ -576,6 +1064,8 @@ function cancelLineDraft() {
   lineDraft.endA.destroy();
   lineDraft.endB.destroy();
   lineDraft = null;
+  popViewFocus();
+  setAllAnchorsVisible(false);
   uiLayer.batchDraw();
 }
 function nodeAtPoint(x, y) {
@@ -587,47 +1077,63 @@ function nodeAtPoint(x, y) {
 }
 stage.on('mousemove', () => {
   if (!lineDraft) return;
-  const p = stage.getPointerPosition(); if (!p) return;
+  const p = getWorldPointer(); if (!p) return;
   let tx = p.x, ty = p.y;
-  const hover = nodeAtPoint(p.x, p.y);
-  if (hover && hover.id !== lineDraft.fromNode.id) { tx = hover.x; ty = hover.y; }
-  lineDraft.path.data(orthoPathData(lineDraft.fromNode.x, lineDraft.fromNode.y, tx, ty));
+  const hit = anchorAtPoint(p.x, p.y, lineDraft.fromNode.id);
+  if (hit) {
+    const ap = anchorPos(hit.node, hit.key);
+    tx = ap.x; ty = ap.y;
+  }
+  lineDraft.path.data(orthoPathData(lineDraft.fromX, lineDraft.fromY, tx, ty));
   lineDraft.endB.position({ x: tx, y: ty });
   uiLayer.batchDraw();
 });
 stage.on('mouseup', () => {
   if (!lineDraft) return;
-  const p = stage.getPointerPosition();
-  const hover = p ? nodeAtPoint(p.x, p.y) : null;
-  if (hover && hover.id !== lineDraft.fromNode.id) {
+  const p = getWorldPointer();
+  const hit = p ? anchorAtPoint(p.x, p.y, lineDraft.fromNode.id) : null;
+  let created = false;
+  if (hit) {
     const exists = routes.some(j =>
-      (j.fromId === lineDraft.fromNode.id && j.toId === hover.id) ||
-      (j.toId === lineDraft.fromNode.id && j.fromId === hover.id)
+      (j.fromId === lineDraft.fromNode.id && j.toId === hit.node.id) ||
+      (j.toId === lineDraft.fromNode.id && j.fromId === hit.node.id)
     );
     if (!exists) {
-      const route = { id: uid(), fromId: lineDraft.fromNode.id, toId: hover.id, color: consumeRouteColor(), workerId: null };
+      const route = {
+        id: uid(),
+        fromId: lineDraft.fromNode.id, toId: hit.node.id,
+        fromAnchor: lineDraft.fromAnchorKey, toAnchor: hit.key,
+        color: consumeRouteColor(), workerId: null,
+        states: { recentlyCreated: true },
+      };
       routes.push(route);
       drawRoute(route);
+      flashRouteCreated(route);
+      created = route;
     }
   }
   cancelLineDraft();
+  if (created) holdRouteView(created.id);
 });
 
 // ===== ROUTE RENDER =====
 function drawRoute(route) {
-  const fn = nodes.find(n => n.id === route.fromId);
-  const tn = nodes.find(n => n.id === route.toId);
+  const ep = routeEndpoints(route);
+  if (!ep) return;
+  // Backfill anchors on legacy/loaded routes that lack them.
+  if (!route.fromAnchor) route.fromAnchor = ep.fromKey;
+  if (!route.toAnchor) route.toAnchor = ep.toKey;
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const path = new Konva.Path({
-    data: orthoPathData(fn.x, fn.y, tn.x, tn.y),
+    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
     stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round', name: 'routepath'
   });
-  const endA = new Konva.Circle({ x: fn.x, y: fn.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
-  const endB = new Konva.Circle({ x: tn.x, y: tn.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
+  const endA = new Konva.Circle({ x: ep.from.x, y: ep.from.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
+  const endB = new Konva.Circle({ x: ep.to.x, y: ep.to.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
   const hitbox = new Konva.Path({
-    data: orthoPathData(fn.x, fn.y, tn.x, tn.y),
+    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
     stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
-    dash: [3, 3], listening: false, name: 'hitbox-route', visible: hitboxShow.routes
+    dash: [3, 3], listening: false, name: 'hitbox-route', visible: false
   });
   grp.add(path, hitbox, endA, endB);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
@@ -636,10 +1142,9 @@ function drawRoute(route) {
   drawSlotForRoute(route);
 }
 function drawSlotForRoute(route) {
-  const fn = nodes.find(n => n.id === route.fromId);
-  const tn = nodes.find(n => n.id === route.toId);
-  if (!fn || !tn) return;
-  const wp = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+  const ep = routeEndpoints(route);
+  if (!ep) return;
+  const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
   const mid = pointAtFraction(wp, 0.5);
   const grp = new Konva.Group({
     id: 'slot_' + route.id, name: 'slot',
@@ -651,29 +1156,35 @@ function drawSlotForRoute(route) {
     fill: 'rgba(255,255,255,0.06)',
   });
   const hitbox = new Konva.Circle({
-    radius: 22, fillPatternImage: STRIPE_PATTERN, listening: false,
-    name: 'hitbox-slot', visible: hitboxShow.slots,
+    radius: 26, fillPatternImage: STRIPE_PATTERN, listening: false,
+    name: 'hitbox-slot', visible: false,
   });
   grp.add(slot, hitbox);
   grp.routeRef = route;
   uiLayer.add(grp);
+  // Continuous "Look at me" pulse on the slot body — sine 0→0.5→0 over 2s.
+  // The pulse runs always; when the slot is hidden by view-mode visibility
+  // the change still happens but isn't visible.
+  grp.flashEntry = lookAtMeFlash({
+    duration: 2000,
+    onValue: v => slot.fill('rgba(255,255,255,' + v.toFixed(3) + ')'),
+  });
   uiLayer.batchDraw();
 }
 function redrawRoutesTouching(nodeId) {
   routes.forEach(j => {
     if (j.fromId !== nodeId && j.toId !== nodeId) return;
     const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
-    const fn = nodes.find(n => n.id === j.fromId);
-    const tn = nodes.find(n => n.id === j.toId);
-    grp.findOne('.routepath').data(orthoPathData(fn.x, fn.y, tn.x, tn.y));
+    const ep = routeEndpoints(j); if (!ep) return;
+    grp.findOne('.routepath').data(orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y));
     const rhb = grp.findOne('.hitbox-route');
-    if (rhb) rhb.data(orthoPathData(fn.x, fn.y, tn.x, tn.y));
+    if (rhb) rhb.data(orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y));
     const ends = grp.find('.routeend');
-    ends[0].position({ x: fn.x, y: fn.y });
-    ends[1].position({ x: tn.x, y: tn.y });
+    ends[0].position({ x: ep.from.x, y: ep.from.y });
+    ends[1].position({ x: ep.to.x, y: ep.to.y });
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
-      const wp = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+      const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
       const mid = pointAtFraction(wp, 0.5);
       slot.position({ x: mid.x, y: mid.y });
     }
@@ -716,17 +1227,25 @@ function onWorkerMouseDown(e, w, grp) {
       if (oldRoute) oldRoute.workerId = null;
       w.routeId = null;
     }
-    grp.moveToTop();
+    w.targetX = null; w.targetY = null; // cancel any pending walk-to-point
+    if (!w.states) w.states = {};
+    w.states.lifting = true;
+    showGhost(w, w.x, w.y); // ghost appears at worker's current spot
     pushTransientMode('liftWorker'); // applyDebugVisibility shows slots for unoccupied routes
   };
 
   const onMove = () => {
-    const p = stage.getPointerPosition(); if (!p) return;
+    // Threshold check uses screen-space (matches startP, which is also screen).
+    const screenP = stage.getPointerPosition(); if (!screenP) return;
     if (!entered) {
-      const dx = p.x - startP.x, dy = p.y - startP.y;
+      const dx = screenP.x - startP.x, dy = screenP.y - startP.y;
       if (dx*dx + dy*dy > 25) { entered = true; beginLift(); }
     }
-    if (entered) { grp.position({ x: p.x, y: p.y }); workerLayer.batchDraw(); }
+    if (entered) {
+      // Ghost is in workerLayer (world coords) — convert.
+      const wp = getWorldPointer();
+      if (wp) moveGhost(w, wp.x, wp.y);
+    }
   };
   const onUp = () => {
     stage.off('mousemove.wdrag'); stage.off('mouseup.wdrag');
@@ -735,24 +1254,33 @@ function onWorkerMouseDown(e, w, grp) {
       selectWorker(w.id);
       return;
     }
-    const p = stage.getPointerPosition();
+    const p = getWorldPointer();
     let chosen = null;
     if (p) {
       const visibleSlots = uiLayer.find('.slot').filter(s => s.visible());
       for (const s of visibleSlots) {
         const dx = s.x() - p.x, dy = s.y() - p.y;
-        if (dx*dx + dy*dy <= 22*22) { chosen = s.routeRef; break; }
+        if (dx*dx + dy*dy <= 26*26) { chosen = s.routeRef; break; }
       }
     }
+    if (w.states) w.states.lifting = false;
     popTransientMode();
     if (chosen) {
+      // Place ghost on the slot. Worker walks to slot, then snaps onto the route to begin shuttling.
+      const ep = routeEndpoints(chosen);
+      const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+      const mid = pointAtFraction(wp, 0.5);
       chosen.workerId = w.id;
       w.routeId = chosen.id;
-      w.segIdx = 0; w.segT = 0; w.dir = 1; w.carrying = 0;
-      const fn = nodes.find(n => n.id === chosen.fromId);
-      w.x = fn.x; w.y = fn.y;
+      w.carrying = 0;
+      w.targetX = mid.x; w.targetY = mid.y;
+      showGhost(w, mid.x, mid.y);
     } else if (p) {
-      w.x = snap(p.x); w.y = snap(p.y);
+      // Drop on empty space → command the worker to walk there. Ghost stays at drop point.
+      w.targetX = snap(p.x); w.targetY = snap(p.y);
+      showGhost(w, w.targetX, w.targetY);
+    } else {
+      hideGhost(w);
     }
     updateWorkerVisual(w);
     selectWorker(w.id); // selection follows the lifted worker
@@ -764,22 +1292,13 @@ function onWorkerMouseDown(e, w, grp) {
 // ===== WORKER SELECTION =====
 function selectWorker(id) {
   selectedWorkerId = id;
-  renderPortraits();
-  updateWorkerSelection();
-}
-function updateWorkerSelection() {
+  // Drive worker.states.selected, which applyWorkerState renders.
   workers.forEach(w => {
-    const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
-    const c = grp.findOne('.workercircle');
-    if (w.id === selectedWorkerId) {
-      c.strokeWidth(4);
-      c.shadowColor('#ffffff'); c.shadowBlur(14); c.shadowOpacity(0.85);
-    } else {
-      c.strokeWidth(2);
-      c.shadowOpacity(0); c.shadowBlur(0);
-    }
+    if (!w.states) w.states = {};
+    w.states.selected = (w.id === id);
   });
-  workerLayer.batchDraw();
+  refreshAllWorkers();
+  renderPortraits();
 }
 
 // ===== WORKER PORTRAITS =====
@@ -826,7 +1345,9 @@ function spawnInitialWorkers() {
     const pos = positions[i] || {x:160 + i*60, y:160};
     const w = {
       id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
-      x: pos.x, y: pos.y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1
+      x: pos.x, y: pos.y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1,
+      targetX: null, targetY: null,
+      states: { selected: false, lifting: false },
     };
     workers.push(w);
     drawWorker(w);
@@ -865,7 +1386,11 @@ function deleteRoute(route) {
   }
   routes = routes.filter(j => j.id !== route.id);
   const g = edgeLayer.findOne('#' + route.id); if (g) g.destroy();
-  const slot = uiLayer.findOne('#slot_' + route.id); if (slot) slot.destroy();
+  const slot = uiLayer.findOne('#slot_' + route.id);
+  if (slot) {
+    if (slot.flashEntry) stopFlash(slot.flashEntry);
+    slot.destroy();
+  }
   edgeLayer.batchDraw();
   uiLayer.batchDraw();
 }
@@ -876,6 +1401,7 @@ function deleteWorker(w) {
   }
   workers = workers.filter(x => x.id !== w.id);
   const g = workerLayer.findOne('#' + w.id); if (g) g.destroy();
+  const gh = workerLayer.findOne('#ghost_' + w.id); if (gh) gh.destroy();
   workerLayer.batchDraw();
   if (selectedWorkerId === w.id) selectedWorkerId = null;
   renderPortraits();
@@ -910,14 +1436,20 @@ function refreshTemplateInstances(tpl) {
     workers.filter(w => w.templateId === tpl.id).forEach(w => {
       w.color = tpl.color; w.capacity = tpl.capacity;
       const grp = workerLayer.findOne('#' + w.id);
-      if (grp) grp.findOne('.workercircle').fill(tpl.color);
+      if (grp) {
+        const ws = grp.findOne('.workercircle');
+        ws.fill(tpl.color); ws.stroke(tpl.color);
+      }
     });
     workerLayer.batchDraw();
   } else {
     nodes.filter(n => n.templateId === tpl.id).forEach(n => {
       n.color = tpl.color;
       const grp = nodeLayer.findOne('#' + n.id);
-      if (grp) grp.findOne('.nodeshape').fill(tpl.color);
+      if (grp) {
+        const ns = grp.findOne('.nodeshape');
+        ns.fill(tpl.color); ns.stroke(tpl.color);
+      }
     });
     nodeLayer.batchDraw();
   }
@@ -926,18 +1458,122 @@ function refreshTemplateInstances(tpl) {
 // ===== HINT =====
 function hideHint() { document.getElementById('hint').style.display = 'none'; }
 
+// ============================================================================
+// FLASH UTILITIES
+// Reusable timed visual effects driven by the animation loop.
+//   singleFlash({ duration, onValue, onDone })   — value 1→0 linearly, then onDone, removed
+//   lookAtMeFlash({ duration, onValue })         — sine pulse 0→0.5→0 (peaks 0.5), continuous,
+//                                                  returns the entry; stop with stopFlash(entry)
+// onValue receives the current "intensity" each tick — apply it to whichever shape property you want.
+// ============================================================================
+const activeFlashes = [];
+function singleFlash(opts) {
+  const f = {
+    type: 'single',
+    duration: opts.duration || 333,
+    onValue: opts.onValue,
+    onDone: opts.onDone,
+    startTime: performance.now(),
+  };
+  activeFlashes.push(f);
+  return f;
+}
+function lookAtMeFlash(opts) {
+  const f = {
+    type: 'loop',
+    duration: opts.duration || 2000,
+    onValue: opts.onValue,
+    startTime: performance.now(),
+  };
+  activeFlashes.push(f);
+  return f;
+}
+function stopFlash(entry) {
+  const i = activeFlashes.indexOf(entry);
+  if (i >= 0) activeFlashes.splice(i, 1);
+}
+function tickFlashes() {
+  const now = performance.now();
+  for (let i = activeFlashes.length - 1; i >= 0; i--) {
+    const f = activeFlashes[i];
+    const elapsed = now - f.startTime;
+    if (f.type === 'single') {
+      if (elapsed >= f.duration) {
+        try { f.onValue(0); } catch (_) {}
+        if (f.onDone) try { f.onDone(); } catch (_) {}
+        activeFlashes.splice(i, 1);
+      } else {
+        try { f.onValue(1 - elapsed / f.duration); } catch (_) {}
+      }
+    } else if (f.type === 'loop') {
+      const t = (elapsed % f.duration) / f.duration;
+      const v = Math.sin(t * Math.PI) * 0.5; // 0 → 0.5 → 0 sine wave
+      try { f.onValue(v); } catch (_) {}
+    }
+  }
+}
+function flashRouteCreated(route) {
+  const grp = edgeLayer.findOne('#' + route.id); if (!grp) return;
+  const ep = routeEndpoints(route); if (!ep) return;
+  const overlay = new Konva.Path({
+    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
+    stroke: '#ffffff', strokeWidth: 14, lineCap: 'round', lineJoin: 'round',
+    listening: false, opacity: 1, name: 'route-flash',
+  });
+  grp.add(overlay);
+  singleFlash({
+    duration: 333,
+    onValue: v => overlay.opacity(v),
+    onDone: () => overlay.destroy(),
+  });
+}
+
 // ===== ANIMATION (worker shuttle) =====
 const SPEED_PX_PER_SEC = 90;
 const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
   let dirty = false;
   workers.forEach(w => {
+    // Walk to a commanded target (free-walk OR pre-shuttle approach to a route).
+    if (w.targetX != null) {
+      const dx = w.targetX - w.x, dy = w.targetY - w.y;
+      const dist = Math.hypot(dx, dy);
+      const step = SPEED_PX_PER_SEC * dt;
+      if (dist <= step || dist === 0) {
+        w.x = w.targetX; w.y = w.targetY;
+        w.targetX = null; w.targetY = null;
+        hideGhost(w);
+        // If assigned to a route, begin shuttling FROM the slot's midpoint
+        // (no snap to endpoint), heading toward the older pile first.
+        if (w.routeId) {
+          const r = routes.find(j => j.id === w.routeId);
+          const ep = r ? routeEndpoints(r) : null;
+          if (ep) {
+            const fnAge = parseInt(String(ep.fn.id).replace(/\D/g, '')) || 0;
+            const tnAge = parseInt(String(ep.tn.id).replace(/\D/g, '')) || 0;
+            // Head toward whichever pile is older (lower id).
+            w.dir = (fnAge < tnAge) ? -1 : 1;
+            const wpAB = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+            const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
+            const seg = fractionToSegment(path, 0.5);
+            w.segIdx = seg.segIdx;
+            w.segT = seg.segT;
+          }
+        }
+      } else {
+        w.x += (dx / dist) * step;
+        w.y += (dy / dist) * step;
+      }
+      updateWorkerVisual(w);
+      dirty = true;
+      return;
+    }
     if (!w.routeId) return;
     const route = routes.find(j => j.id === w.routeId); if (!route) return;
-    const fn = nodes.find(n => n.id === route.fromId);
-    const tn = nodes.find(n => n.id === route.toId);
-    if (!fn || !tn) return;
-    const wpAB = orthoWaypoints(fn.x, fn.y, tn.x, tn.y);
+    const ep = routeEndpoints(route);
+    if (!ep) return;
+    const fn = ep.fn, tn = ep.tn;
+    const wpAB = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
     const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
 
     let remaining = SPEED_PX_PER_SEC * dt;
@@ -970,10 +1606,12 @@ const anim = new Konva.Animation(frame => {
         w.carrying = pickup;
         updateNodeStack(dest);
       }
-      // reverse direction
+      // reverse direction; pin position to the path's last waypoint (the anchor),
+      // not the pile center — otherwise the worker visually flickers a few px on arrival.
       w.dir *= -1;
       w.segIdx = 0; w.segT = 0;
-      w.x = dest.x; w.y = dest.y;
+      const last = path[path.length - 1];
+      w.x = last.x; w.y = last.y;
     } else {
       const a = path[w.segIdx], b = path[w.segIdx + 1];
       w.x = a.x + (b.x - a.x) * w.segT;
@@ -982,8 +1620,9 @@ const anim = new Konva.Animation(frame => {
     updateWorkerVisual(w);
     dirty = true;
   });
-  return dirty;
-}, [workerLayer, nodeLayer]);
+  tickFlashes();
+  return dirty || activeFlashes.length > 0;
+}, [workerLayer, nodeLayer, edgeLayer, uiLayer]);
 anim.start();
 
 // ===== DEBUG PANEL =====
@@ -1044,55 +1683,147 @@ const VISUAL_TYPES = [
   },
 ];
 
-const modeVisibility = {};
-const ROUTE_VISIBLE_MODES = new Set(['drawRoutes', 'liftWorker']);
-const SLOT_VISIBLE_MODES = new Set(['liftWorker']);
-Object.keys(MODES).forEach(mode => {
-  modeVisibility[mode] = {};
+// Initialize per-view default visibility from VISUAL_TYPES.
+Object.keys(VIEW_MODES).forEach(viewKey => {
   VISUAL_TYPES.forEach(t => {
-    let defaultVis = true;
-    if (t.key === 'routes' || t.key === 'routeEnds') {
-      defaultVis = ROUTE_VISIBLE_MODES.has(mode);
-    } else if (t.key === 'routeSlots') {
-      defaultVis = SLOT_VISIBLE_MODES.has(mode);
+    let val = 'visible';
+    if (t.key === 'routes' || t.key === 'routeEnds' || t.key === 'routeSlots') {
+      val = (viewKey === 'ViewRoutes') ? 'visible' : 'hidden';
     }
-    modeVisibility[mode][t.key] = defaultVis;
+    VIEW_MODES[viewKey].visible[t.key] = val;
   });
 });
 
+// Persistence — save edits across reloads.
+const VIEW_MODES_STORAGE_KEY = 'uxprototype.viewModes.v1';
+function saveViewModes() {
+  try {
+    const data = {};
+    Object.entries(VIEW_MODES).forEach(([k, v]) => { data[k] = { ...v.visible }; });
+    localStorage.setItem(VIEW_MODES_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) { /* localStorage may be unavailable (e.g. file://, private mode) */ }
+}
+function loadViewModes() {
+  try {
+    const raw = localStorage.getItem(VIEW_MODES_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    Object.entries(data).forEach(([viewKey, vis]) => {
+      if (!VIEW_MODES[viewKey] || !vis) return;
+      Object.entries(vis).forEach(([typeKey, val]) => {
+        if (VIS_STATES.includes(val)) VIEW_MODES[viewKey].visible[typeKey] = val;
+      });
+    });
+  } catch (e) { /* ignore corrupt data */ }
+}
+loadViewModes(); // hydrate before first render
+
 let debugOpen = false;
-let debugActiveMode = 'gameInteract';
+// Debug panel View Modes tab operates on VIEW MODES directly (purely visual states).
+// Auto-sync only follows the effective view; doesn't tie to game mode at all.
+let debugActiveView = 'ViewDefault';
 let debugActiveTab = 'viewmodes';
 const expandedTypes = new Set();
 
-// Hitbox visualization state — shown when checked in Debug → Options → Hitboxes.
-const HITBOX_TYPES = [
-  { key: 'piles',   label: 'Piles' },
-  { key: 'workers', label: 'Workers' },
-  { key: 'slots',   label: 'Route Slots' },
-  { key: 'routes',  label: 'Routes' },
-];
-const hitboxShow = { piles: false, workers: false, slots: false, routes: false };
+// Hitbox visualization state — Debug → Options → Hitboxes.
+// The list is DERIVED automatically from any Konva shape whose name starts with 'hitbox-'.
+// Adding a new hitbox category = just create a shape named 'hitbox-foo' on any layer;
+// it'll show up in the panel with no further wiring.
+const hitboxShow = {}; // keyed by suffix after 'hitbox-'
+const HITBOX_LAYERS = () => [nodeLayer, workerLayer, edgeLayer, uiLayer];
+function discoverHitboxes() {
+  const groups = new Map(); // suffix -> { key, label, shapes }
+  HITBOX_LAYERS().forEach(layer => {
+    layer.find('Shape').forEach(s => {
+      const n = s.name && s.name();
+      if (!n) return;
+      // a shape can have multiple class-names (space-separated); find any starting with 'hitbox-'
+      const cls = n.split(/\s+/).find(c => c.startsWith('hitbox-'));
+      if (!cls) return;
+      const suffix = cls.slice('hitbox-'.length);
+      if (!groups.has(suffix)) {
+        const label = suffix.charAt(0).toUpperCase() + suffix.slice(1) + 's';
+        groups.set(suffix, { key: suffix, label, shapes: [] });
+      }
+      groups.get(suffix).shapes.push(s);
+    });
+  });
+  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
 function applyHitboxVisibility() {
-  nodeLayer.find('.hitbox-pile').forEach(h => h.visible(hitboxShow.piles));
-  workerLayer.find('.hitbox-worker').forEach(h => h.visible(hitboxShow.workers));
-  uiLayer.find('.hitbox-slot').forEach(h => h.visible(hitboxShow.slots));
-  edgeLayer.find('.hitbox-route').forEach(h => h.visible(hitboxShow.routes));
-  nodeLayer.batchDraw(); workerLayer.batchDraw(); uiLayer.batchDraw(); edgeLayer.batchDraw();
+  const groups = discoverHitboxes();
+  groups.forEach(g => {
+    const show = !!hitboxShow[g.key];
+    g.shapes.forEach(s => s.visible(show));
+  });
+  HITBOX_LAYERS().forEach(l => l.batchDraw());
 }
 
 let debugPreviewing = false; // true while the panel is overriding the live view
 function applyDebugVisibility() {
-  // While previewing from the panel, show debugActiveMode's visibility live.
-  // Otherwise, follow the actual game mode.
-  if (!debugPreviewing && debugActiveMode !== currentMode) {
-    debugActiveMode = currentMode;
+  // The Debug → View Modes tab is purely about visual states. While the user is
+  // previewing a specific view via the panel, that view drives the live display.
+  // Otherwise, the effective view (game mode default + viewFocusStack) does.
+  const effectiveView = viewFocusStack.length
+    ? viewFocusStack[viewFocusStack.length - 1]
+    : MODES[currentMode].view;
+  if (!debugPreviewing && debugActiveView !== effectiveView) {
+    debugActiveView = effectiveView;
     if (debugOpen) renderDebugPanel();
   }
-  const modeToApply = debugPreviewing ? debugActiveMode : currentMode;
-  const vis = modeVisibility[modeToApply];
+  const view = debugPreviewing ? debugActiveView : effectiveView;
+  const vis = VIEW_MODES[view] && VIEW_MODES[view].visible;
   if (!vis) return;
-  VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== false));
+  // 'highlighted' renders the same as 'visible' until per-type highlighting is implemented.
+  VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
+}
+
+// Instance state catalog — drives the Instance States section. Each entry is a
+// (type, state) pair with a function that returns the matching live instances.
+const workerLabel = w => {
+  const tpl = palette.workers.find(t => t.id === w.templateId);
+  const n = tpl && tpl.name;
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : w.id;
+};
+const INSTANCE_STATE_DEFS = [
+  { type: 'Piles', state: 'hovered',
+    list: () => nodes.filter(n => n.states && n.states.hovered),
+    label: n => 'Pile ' + n.id },
+  { type: 'Workers', state: 'selected',
+    list: () => workers.filter(w => w.states && w.states.selected),
+    label: workerLabel },
+  { type: 'Workers', state: 'lifting',
+    list: () => workers.filter(w => w.states && w.states.lifting),
+    label: workerLabel },
+  { type: 'Workers', state: 'walking',
+    list: () => workers.filter(w => w.targetX != null),
+    label: workerLabel },
+  { type: 'Workers', state: 'shuttling',
+    list: () => workers.filter(w => w.routeId != null && w.targetX == null),
+    label: workerLabel },
+  { type: 'Routes', state: 'recentlyCreated',
+    list: () => routes.filter(r => r.states && r.states.recentlyCreated),
+    label: r => r.fromId + ' → ' + r.toId },
+];
+
+function renderInstanceStates() {
+  const tbody = document.getElementById('instance-state-rows');
+  if (!tbody) return;
+  let html = '';
+  let lastType = null;
+  INSTANCE_STATE_DEFS.forEach(def => {
+    if (def.type !== lastType) {
+      html += '<tr class="istate-type-row"><td colspan="2">' + def.type + '</td></tr>';
+      lastType = def.type;
+    }
+    const matches = def.list();
+    const count = matches.length;
+    const cls = 'istate-row ' + (count > 0 ? 'has' : 'zero');
+    const labels = matches.map(def.label).join(', ');
+    const stateCell = def.state + (labels ? ' <span style="color:#666;font-size:10px"> — ' + labels + '</span>' : '');
+    html += '<tr class="' + cls + '"><td>' + stateCell + '</td><td>' + count + '</td></tr>';
+  });
+  tbody.innerHTML = html;
 }
 
 let lastDebugSignature = '';
@@ -1105,49 +1836,57 @@ function renderDebugPanel() {
   // Without this, the 100ms refresh nukes rows mid-click and the click event
   // is lost between mousedown and mouseup.
   const sig = JSON.stringify({
-    mode: debugActiveMode,
+    view: debugActiveView,
     expanded: [...expandedTypes].sort(),
-    vis: modeVisibility,
+    vis: VIEW_MODES,
     counts: VISUAL_TYPES.map(t => t.getInstances().length),
     instLabels: VISUAL_TYPES
       .filter(t => expandedTypes.has(t.key))
       .map(t => t.getInstances().map(i => i.label)),
+    iStates: INSTANCE_STATE_DEFS.map(d => d.list().length),
   });
   if (sig === lastDebugSignature) return;
   lastDebugSignature = sig;
+  renderInstanceStates();
 
   modeBtnsEl.innerHTML = '';
-  Object.entries(MODES).forEach(([key, m]) => {
+  Object.entries(VIEW_MODES).forEach(([key, v]) => {
     const btn = document.createElement('button');
-    btn.className = 'dbg-mode-btn' + (debugActiveMode === key ? ' active' : '');
-    btn.textContent = m.display;
+    btn.className = 'dbg-mode-btn' + (debugActiveView === key ? ' active' : '');
+    btn.textContent = v.display;
     btn.onclick = () => {
-      debugActiveMode = key;
-      debugPreviewing = true;
+      debugActiveView = key;
+      // Previewing means: pin the live view to debugActiveView regardless of game mode.
+      const effectiveView = viewFocusStack.length
+        ? viewFocusStack[viewFocusStack.length - 1]
+        : MODES[currentMode].view;
+      debugPreviewing = (debugActiveView !== effectiveView);
       applyDebugVisibility();
       renderDebugPanel();
     };
     modeBtnsEl.appendChild(btn);
   });
 
-  const vis = modeVisibility[debugActiveMode];
+  const vis = (VIEW_MODES[debugActiveView] && VIEW_MODES[debugActiveView].visible) || {};
   let html = '';
   VISUAL_TYPES.forEach(type => {
     const instances = type.getInstances();
-    const isVisible = vis[type.key] !== false;
+    const state = vis[type.key] || 'visible'; // 'visible' | 'hidden' | 'highlighted'
+    const isVisibleish = (state !== 'hidden');
     const isExpanded = expandedTypes.has(type.key);
     const canExpand = instances.length > 0;
     const expandIcon = canExpand ? (isExpanded ? '▾' : '▸') : '·';
     const cursorStyle = canExpand ? 'cursor:pointer' : 'cursor:default';
+    const stateLabel = state.charAt(0).toUpperCase() + state.slice(1);
 
     html +=
       '<tr class="dbg-type-row" data-action="expand" data-key="' + type.key + '" style="' + cursorStyle + '">' +
         '<td class="dbg-label">' + expandIcon + ' ' + type.label +
           ' <span class="dbg-count">(' + instances.length + ')</span></td>' +
         '<td class="dbg-vis-cell">' +
-          '<button class="dbg-vis-btn ' + (isVisible ? 'on' : 'off') +
-            '" data-action="toggle" data-key="' + type.key + '">' +
-            (isVisible ? 'Visible' : 'Hidden') +
+          '<button class="dbg-vis-btn state-' + state +
+            '" data-action="toggle" data-key="' + type.key + '" title="Click to cycle: visible → hidden → highlighted">' +
+            stateLabel +
           '</button>' +
         '</td>' +
       '</tr>';
@@ -1157,7 +1896,7 @@ function renderDebugPanel() {
         html +=
           '<tr class="dbg-inst-row">' +
             '<td class="dbg-inst-label">↳ ' + inst.label + '</td>' +
-            '<td class="dbg-vis-cell"><span class="dbg-inst-dot ' + (isVisible ? 'on' : '') + '">●</span></td>' +
+            '<td class="dbg-vis-cell"><span class="dbg-inst-dot ' + (isVisibleish ? 'on' : '') + '">●</span></td>' +
           '</tr>';
       });
     }
@@ -1190,9 +1929,18 @@ function toggleDebugExpand(typeKey) {
 }
 
 function toggleDebugVis(typeKey) {
-  modeVisibility[debugActiveMode][typeKey] = !modeVisibility[debugActiveMode][typeKey];
-  // Preview the change live, even if it's for a non-current mode.
-  debugPreviewing = (debugActiveMode !== currentMode);
+  const v = VIEW_MODES[debugActiveView];
+  if (!v) return;
+  // Cycle: visible → hidden → highlighted → visible → ...
+  const cur = v.visible[typeKey] || 'visible';
+  const idx = VIS_STATES.indexOf(cur);
+  v.visible[typeKey] = VIS_STATES[(idx + 1) % VIS_STATES.length];
+  saveViewModes();
+  // Preview the change live if the panel's active view differs from the effective view.
+  const effectiveView = viewFocusStack.length
+    ? viewFocusStack[viewFocusStack.length - 1]
+    : MODES[currentMode].view;
+  debugPreviewing = (debugActiveView !== effectiveView);
   applyDebugVisibility();
   renderDebugPanel();
 }
@@ -1204,7 +1952,10 @@ function toggleDebugVis(typeKey) {
   panel.addEventListener('mouseleave', () => {
     if (!debugPreviewing) return;
     debugPreviewing = false;
-    debugActiveMode = currentMode;
+    // Snap the debug active view back to the current effective view.
+    debugActiveView = viewFocusStack.length
+      ? viewFocusStack[viewFocusStack.length - 1]
+      : MODES[currentMode].view;
     applyDebugVisibility();
     renderDebugPanel();
   });
@@ -1229,15 +1980,20 @@ document.querySelectorAll('#debug-tab-bar .debug-tab').forEach(b => {
 function renderOptionsPane() {
   const tbody = document.getElementById('hitbox-rows');
   if (!tbody) return;
+  const groups = discoverHitboxes();
   let html = '';
-  HITBOX_TYPES.forEach(t => {
-    html +=
-      '<tr>' +
-        '<td>' + t.label + '</td>' +
-        '<td><input type="checkbox" data-hitbox="' + t.key + '"' +
-          (hitboxShow[t.key] ? ' checked' : '') + '></td>' +
-      '</tr>';
-  });
+  if (groups.length === 0) {
+    html = '<tr><td colspan="2" style="color:#666;font-style:italic;text-align:center;padding:14px">No hitboxes in scene yet.</td></tr>';
+  } else {
+    groups.forEach(g => {
+      html +=
+        '<tr>' +
+          '<td>' + g.label + ' <span style="color:#666;font-size:10px">(' + g.shapes.length + ')</span></td>' +
+          '<td><input type="checkbox" data-hitbox="' + g.key + '"' +
+            (hitboxShow[g.key] ? ' checked' : '') + '></td>' +
+        '</tr>';
+    });
+  }
   tbody.innerHTML = html;
   tbody.querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', () => {
@@ -1246,6 +2002,163 @@ function renderOptionsPane() {
     });
   });
 }
+
+// ===== LEVEL SAVE / LOAD =====
+const LEVEL_VERSION = 1;
+function serializeLevel() {
+  return {
+    version: LEVEL_VERSION,
+    savedAt: new Date().toISOString(),
+    stage: { x: stage.x(), y: stage.y(), scale: stage.scaleX() },
+    palette: {
+      objects: palette.objects.map(o => ({ id: o.id, kind: o.kind, color: o.color })),
+      workers: palette.workers.map(w => ({ id: w.id, kind: w.kind, color: w.color, capacity: w.capacity, name: w.name })),
+    },
+    nodes: nodes.map(n => ({
+      id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items,
+    })),
+    routes: routes.map(r => ({
+      id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId,
+    })),
+    workers: workers.map(w => ({
+      id: w.id, templateId: w.templateId, color: w.color, capacity: w.capacity,
+      x: w.x, y: w.y, routeId: w.routeId, carrying: w.carrying,
+      segIdx: w.segIdx, segT: w.segT, dir: w.dir,
+      targetX: w.targetX, targetY: w.targetY,
+    })),
+    viewModes: Object.fromEntries(Object.entries(VIEW_MODES).map(([k, v]) => [k, { visible: { ...v.visible } }])),
+    nextId, routeColorIdx,
+  };
+}
+function downloadLevel() {
+  const json = JSON.stringify(serializeLevel(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `level-${stamp}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setLevelStatus('Saved ' + a.download);
+}
+function clearAllLevelShapes() {
+  nodeLayer.destroyChildren();
+  edgeLayer.destroyChildren();
+  workerLayer.destroyChildren();
+  uiLayer.destroyChildren();
+  nodes = []; routes = []; workers = [];
+  selectedWorkerId = null;
+}
+function loadLevelData(data) {
+  if (!data || data.version !== LEVEL_VERSION) {
+    throw new Error('Unsupported level version: ' + (data && data.version));
+  }
+  clearAllLevelShapes();
+
+  // Palette colors/capacities (template instances reference these)
+  if (data.palette && Array.isArray(data.palette.objects)) {
+    data.palette.objects.forEach(o => {
+      const ex = palette.objects.find(p => p.id === o.id);
+      if (ex && o.color) ex.color = o.color;
+    });
+  }
+  if (data.palette && Array.isArray(data.palette.workers)) {
+    data.palette.workers.forEach(o => {
+      const ex = palette.workers.find(p => p.id === o.id);
+      if (!ex) return;
+      if (o.color) ex.color = o.color;
+      if (typeof o.capacity === 'number') ex.capacity = o.capacity;
+      if (o.name) ex.name = o.name;
+    });
+  }
+
+  // Nodes
+  (data.nodes || []).forEach(n => {
+    const node = { id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items || 0 };
+    nodes.push(node);
+    drawNode(node);
+  });
+  // Routes (also creates slots)
+  (data.routes || []).forEach(r => {
+    const route = {
+      id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId || null,
+      fromAnchor: r.fromAnchor, toAnchor: r.toAnchor,
+      states: { recentlyCreated: false },
+    };
+    routes.push(route);
+    drawRoute(route);
+  });
+  // Workers
+  (data.workers || []).forEach(wd => {
+    const w = {
+      id: wd.id, templateId: wd.templateId, color: wd.color, capacity: wd.capacity,
+      x: wd.x, y: wd.y, routeId: wd.routeId || null, carrying: wd.carrying || 0,
+      segIdx: wd.segIdx || 0, segT: wd.segT || 0, dir: wd.dir || 1,
+      targetX: wd.targetX != null ? wd.targetX : null,
+      targetY: wd.targetY != null ? wd.targetY : null,
+      states: { selected: false, lifting: false },
+    };
+    workers.push(w);
+    drawWorker(w);
+  });
+
+  // ID counter + color rotation
+  if (typeof data.nextId === 'number') nextId = data.nextId;
+  if (typeof data.routeColorIdx === 'number') routeColorIdx = data.routeColorIdx;
+
+  // Stage transform
+  if (data.stage) {
+    stage.scale({ x: data.stage.scale || 1, y: data.stage.scale || 1 });
+    stage.position({ x: data.stage.x || 0, y: data.stage.y || 0 });
+    drawGrid();
+    stage.batchDraw();
+  }
+  // View modes
+  if (data.viewModes) {
+    Object.entries(data.viewModes).forEach(([k, v]) => {
+      if (VIEW_MODES[k] && v && v.visible) {
+        Object.entries(v.visible).forEach(([typeKey, val]) => {
+          if (VIS_STATES.includes(val)) VIEW_MODES[k].visible[typeKey] = val;
+        });
+      }
+    });
+    saveViewModes();
+  }
+
+  // Re-render dependent UI
+  renderPortraits();
+  renderPalette();
+  applyMode();
+  applyHitboxVisibility();
+}
+function uploadLevel() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        loadLevelData(data);
+        setLevelStatus('Loaded ' + file.name);
+      } catch (err) {
+        setLevelStatus('Load failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+function setLevelStatus(msg) {
+  const el = document.getElementById('level-status');
+  if (el) el.textContent = msg;
+}
+document.getElementById('btn-save-level').addEventListener('click', downloadLevel);
+document.getElementById('btn-load-level').addEventListener('click', uploadLevel);
 
 function toggleDebugPanel() {
   debugOpen = !debugOpen;

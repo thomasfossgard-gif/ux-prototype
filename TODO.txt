@@ -4,3 +4,4 @@ TODO - UXPrototype
 [ ] Highlighting
 [ ] Mode Background Yard colors
 [ ] Mode Visual Changes Matrix - Editable
+[ ] Scroll and zoom and reset view button (bottom right)
