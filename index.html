@@ -36,6 +36,7 @@
   #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
   #confirm-dialog button:hover { background: #4a90e2; }
   .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
+  #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(255,255,255,0.2); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
   #mode-label { position: absolute; top: 80px; left: 16px; color: rgba(255,255,255,0.10); font-size: 56px; font-weight: 800; letter-spacing: 1px; pointer-events: none; line-height: 1; text-transform: uppercase; }
   #worker-portraits { position: absolute; top: 12px; left: 12px; display: flex; gap: 10px; z-index: 5; align-items: flex-start; }
   .portrait-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
@@ -152,6 +153,7 @@
     <div id="canvas"></div>
     <div id="worker-portraits"></div>
     <div id="mode-label">Mode: Game Interact</div>
+    <div id="version-label"></div>
     <div class="hint" id="hint">
       Drag a pile from the top palette into this area.<br>
       Use <b>Draw Route</b> to drag a line between two piles.<br>
@@ -222,6 +224,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
+const APP_VERSION = '0.1.1#3';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -375,6 +378,7 @@ const nodeLayer = new Konva.Layer();
 const workerLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
 stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
+document.getElementById('version-label').textContent = 'v' + APP_VERSION;
 
 // Konva's getPointerPosition returns SCREEN-relative coords (within the stage container),
 // not world coords. With pan/zoom on, anything that compares against world-space data
@@ -1085,7 +1089,11 @@ stage.on('mousemove', () => {
     const ap = anchorPos(hit.node, hit.key);
     tx = ap.x; ty = ap.y;
   }
-  lineDraft.path.data(orthoPathData(lineDraft.fromX, lineDraft.fromY, tx, ty));
+  const fromDir = anchorDir(lineDraft.fromAnchorKey);
+  const pathD = hit
+    ? rectilinearPathData(lineDraft.fromX, lineDraft.fromY, fromDir, tx, ty, anchorDir(hit.key))
+    : draftPathData(lineDraft.fromX, lineDraft.fromY, fromDir, tx, ty);
+  lineDraft.path.data(pathD);
   lineDraft.endB.position({ x: tx, y: ty });
   uiLayer.batchDraw();
 });
@@ -1269,7 +1277,7 @@ function onWorkerMouseDown(e, w, grp) {
     if (chosen) {
       // Place ghost on the slot. Worker walks to slot, then snaps onto the route to begin shuttling.
       const ep = routeEndpoints(chosen);
-      const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+      const wp = routeWaypoints(chosen);
       const mid = pointAtFraction(wp, 0.5);
       chosen.workerId = w.id;
       w.routeId = chosen.id;
@@ -1517,7 +1525,7 @@ function flashRouteCreated(route) {
   const grp = edgeLayer.findOne('#' + route.id); if (!grp) return;
   const ep = routeEndpoints(route); if (!ep) return;
   const overlay = new Konva.Path({
-    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
+    data: routePathData(route),
     stroke: '#ffffff', strokeWidth: 14, lineCap: 'round', lineJoin: 'round',
     listening: false, opacity: 1, name: 'route-flash',
   });
@@ -1554,7 +1562,7 @@ const anim = new Konva.Animation(frame => {
             const tnAge = parseInt(String(ep.tn.id).replace(/\D/g, '')) || 0;
             // Head toward whichever pile is older (lower id).
             w.dir = (fnAge < tnAge) ? -1 : 1;
-            const wpAB = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+            const wpAB = routeWaypoints(r);
             const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
             const seg = fractionToSegment(path, 0.5);
             w.segIdx = seg.segIdx;
@@ -1574,7 +1582,7 @@ const anim = new Konva.Animation(frame => {
     const ep = routeEndpoints(route);
     if (!ep) return;
     const fn = ep.fn, tn = ep.tn;
-    const wpAB = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+    const wpAB = routeWaypoints(route);
     const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
 
     let remaining = SPEED_PX_PER_SEC * dt;
