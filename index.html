@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
 <meta charset="UTF-8">
 <title>Connection Prototype v0</title>
 <style>
@@ -1125,13 +1126,13 @@ function drawRoute(route) {
   if (!route.toAnchor) route.toAnchor = ep.toKey;
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const path = new Konva.Path({
-    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
+    data: routePathData(route),
     stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round', name: 'routepath'
   });
   const endA = new Konva.Circle({ x: ep.from.x, y: ep.from.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
   const endB = new Konva.Circle({ x: ep.to.x, y: ep.to.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
   const hitbox = new Konva.Path({
-    data: orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y),
+    data: routePathData(route),
     stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
     dash: [3, 3], listening: false, name: 'hitbox-route', visible: false
   });
@@ -1144,7 +1145,7 @@ function drawRoute(route) {
 function drawSlotForRoute(route) {
   const ep = routeEndpoints(route);
   if (!ep) return;
-  const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+  const wp = routeWaypoints(route);
   const mid = pointAtFraction(wp, 0.5);
   const grp = new Konva.Group({
     id: 'slot_' + route.id, name: 'slot',
@@ -1176,15 +1177,15 @@ function redrawRoutesTouching(nodeId) {
     if (j.fromId !== nodeId && j.toId !== nodeId) return;
     const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
     const ep = routeEndpoints(j); if (!ep) return;
-    grp.findOne('.routepath').data(orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y));
+    grp.findOne('.routepath').data(routePathData(j));
     const rhb = grp.findOne('.hitbox-route');
-    if (rhb) rhb.data(orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y));
+    if (rhb) rhb.data(routePathData(j));
     const ends = grp.find('.routeend');
     ends[0].position({ x: ep.from.x, y: ep.from.y });
     ends[1].position({ x: ep.to.x, y: ep.to.y });
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
-      const wp = orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+      const wp = routeWaypoints(j);
       const mid = pointAtFraction(wp, 0.5);
       slot.position({ x: mid.x, y: mid.y });
     }
