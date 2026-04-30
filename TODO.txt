@@ -1,6 +1,7 @@
 TODO - UXPrototype
 ==================
 
+[ ] New View Mode: HintShow
 [ ] Highlighting
 [ ] Mode Background Yard colors
 [ ] Mode Visual Changes Matrix - Editable

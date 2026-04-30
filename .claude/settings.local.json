@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(grep -n \"\\\\.visible\\\\s*\\(\" \"C:\\\\\\\\CodingPractice\\\\\\\\UXPrototype\\\\\\\\index.html\")"
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": "printf '\\033[1;38;2;255;140;0m🟧 UX PROTOTYPE\\033[0m'"

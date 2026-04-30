@@ -19,6 +19,7 @@
   .palette-item:hover { outline: 2px solid #4a90e2; }
   .swatch-circle { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; }
   .swatch-square { width: 30px; height: 30px; border-radius: 0; border: none; background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px); background-size: 5px 5px; }
+  .swatch-triangle { width: 30px; height: 30px; clip-path: polygon(50% 4%, 4% 96%, 96% 96%); border: none; }
   .tool-btn { width: 48px; height: 48px; background: #2c313c; border: none; color: #ccc; cursor: pointer; border-radius: 6px; font-size: 11px; padding: 4px; line-height: 1.1; }
   .tool-btn.active { background: #4a90e2; color: #fff; }
   .tool-btn:hover:not(.active) { background: #3a4150; }
@@ -166,7 +167,12 @@
   #instance-state-table .istate-empty td { color: #555; font-size: 10px; padding: 6px 8px; font-style: italic; }
   #instance-state-table .istate-row.has td:last-child { color: #7ab4f5; font-weight: 700; }
   #instance-state-table .istate-row.zero td:last-child { color: #555; }
-  #debug-viewmodes-pane[hidden], #debug-options-pane[hidden] { display: none; }
+  #debug-viewmodes-pane[hidden], #debug-options-pane[hidden], #debug-local-pane[hidden] { display: none; }
+  #debug-local-pane { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .local-rule { background: #1e2028; border: 1px solid #2a2d35; border-radius: 6px; padding: 10px 12px; }
+  .local-rule-name { font-size: 11px; font-weight: 700; color: #ccc; margin-bottom: 4px; }
+  .local-rule-driver { font-size: 10px; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .local-rule-note { font-size: 11px; color: #666; line-height: 1.5; }
   .options-section { padding: 10px 12px; }
   .options-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
   .options-table { width: 100%; border-collapse: collapse; }
@@ -175,6 +181,25 @@
   .options-table td { color: #ddd; font-size: 12px; padding: 6px; border-bottom: 1px solid #1c1c1c; }
   .options-table td:last-child { text-align: center; }
   .options-table input[type=checkbox] { cursor: pointer; width: 14px; height: 14px; accent-color: #4a90e2; }
+  .meta-btn.active { background: #4a90e2; border-color: #5a9ef0; color: #fff; }
+  .meta-btn.active:hover { background: #5a9ef0; }
+  /* ===== INSPECT PANEL ===== */
+  #inspect-panel {
+    position: fixed; background: #232730; border: 1px solid #555;
+    border-radius: 8px; padding: 12px 14px 14px; z-index: 60;
+    width: 230px; box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    font-size: 12px; color: #ddd;
+  }
+  #inspect-panel h4 { font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  #inspect-panel .inspect-id { font-size: 10px; color: #555; margin-bottom: 10px; }
+  #inspect-panel .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  #inspect-panel label { font-size: 12px; color: #ccc; }
+  #inspect-panel input[type=number] { width: 64px; padding: 4px 6px; background: #1a1d23; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 12px; }
+  #inspect-panel input[type=color] { width: 44px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+  #inspect-panel input[type=text] { width: 120px; padding: 4px 6px; background: #1a1d23; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 12px; }
+  #inspect-panel .close-btn { position: absolute; top: 6px; right: 8px; background: none; border: none; color: #666; cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
+  #inspect-panel .close-btn:hover { color: #fff; }
+  #inspect-panel .inspect-divider { border: none; border-top: 1px solid #2a2d35; margin: 8px 0; }
 </style>
 </head>
 <body>
@@ -205,6 +230,11 @@
             <button id="meta-reload-btn" title="Reload page">↻</button>
             <button id="btn-save-default" class="meta-btn">Save Default</button>
             <button id="btn-load-default" class="meta-btn">Load Default</button>
+            <button id="btn-inspect-tool" class="meta-btn" title="Inspect: click any object to edit its properties" style="font-size:16px;padding:3px 8px">⚙</button>
+          </div>
+          <div class="meta-row">
+            <button id="btn-set-checkpoint" class="meta-btn">Set Checkpoint</button>
+            <button id="btn-restore-checkpoint" class="meta-btn" id="btn-restore-checkpoint">Restore</button>
           </div>
           <div id="meta-status"></div>
         </div>
@@ -228,6 +258,7 @@
   <div id="debug-tab-bar">
     <button class="debug-tab active" data-tab="viewmodes">View Modes</button>
     <button class="debug-tab" data-tab="options">Options</button>
+    <button class="debug-tab" data-tab="local">Local</button>
   </div>
   <div id="debug-viewmodes-pane">
     <div id="debug-mode-btns"></div>
@@ -244,6 +275,7 @@
       </table>
     </div>
   </div>
+  <div id="debug-local-pane" hidden></div>
   <div id="debug-options-pane" hidden>
     <div class="options-section">
       <h4 class="options-title">Hitboxes</h4>
@@ -272,6 +304,12 @@
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
 <button id="debug-toggle" onclick="toggleDebugPanel()">DEBUG</button>
+<div id="inspect-panel" hidden>
+  <button class="close-btn" onclick="closeInspectPanel()">&times;</button>
+  <h4 id="inspect-title">Inspect</h4>
+  <div id="inspect-id" class="inspect-id"></div>
+  <div id="inspect-body"></div>
+</div>
 <div id="property-window" hidden>
   <button class="close" title="Close">&times;</button>
   <h3 id="prop-title">Properties</h3>
@@ -289,9 +327,12 @@ const palette = {
   ],
   objects: [
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
+    { id: 'oB', kind: 'object', shape: 'triangle', color: '#A0522D', label: 'Wood'    },
+    { id: 'oC', kind: 'object', shape: 'triangle', color: '#9E9E9E', label: 'Steel'   },
+    { id: 'oD', kind: 'object', shape: 'triangle', color: '#E879B9', label: 'Plastic' },
   ],
 };
-const APP_VERSION = '0.1.2#1';
+const APP_VERSION = '0.1.2#8';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -327,8 +368,9 @@ const MODES = {
   addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy',        view: 'ViewDefault' },
   deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed', view: 'ViewDefault' },
   liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewRoutes' },
+  inspectMode:  { display: 'Inspect',       tool: 'inspect', cursor: 'crosshair',   view: 'ViewDefault' },
 };
-const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode' };
+const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode', inspect: 'inspectMode' };
 let currentMode = 'gameInteract';
 let prevMode = null; // saved game mode while a transient game mode (liftWorker) is active
 const viewFocusStack = []; // ordered list of pushed view-mode names; topmost wins
@@ -384,6 +426,7 @@ function popTransientMode() {
 // hovering a pile in the palette, dragging a pile out of the palette) can request
 // the Route View visual mode. View-only — does NOT change the game mode.
 let pileFocusDepth = 0;
+let anchorsVisible = true;
 function enterPileFocus() {
   pileFocusDepth++;
   if (pileFocusDepth === 1) pushViewFocus(currentMode === 'drawRoutes' ? 'ViewRoutes' : 'ViewHoverReveal');
@@ -410,6 +453,10 @@ function applyMode() {
   });
   // cancel any in-progress line draft when leaving drawRoutes
   if (currentMode !== 'drawRoutes') cancelLineDraft();
+  // sync inspect button active state; close panel when leaving inspect mode
+  const inspectBtn = document.getElementById('btn-inspect-tool');
+  if (inspectBtn) inspectBtn.classList.toggle('active', currentMode === 'inspectMode');
+  if (currentMode !== 'inspectMode') closeInspectPanel();
 
   // --- contextual visibility hooks ---
   // Pile highlight: subtle outline glow when targetable for the current mode.
@@ -559,6 +606,7 @@ stage.on('wheel', e => {
 let panStart = null;
 stage.on('mousedown', e => {
   if (e.evt.button !== 0) return;
+  if (e.target === stage && radialMenu && !radialMenu.ghost) hideRadialMenu();
   if (e.target !== stage) return; // ignore if a shape was hit
   panStart = {
     cx: e.evt.clientX, cy: e.evt.clientY,
@@ -626,7 +674,9 @@ function renderPalette() {
     if (isInUse(tpl.id)) el.classList.add('in-use');
     el.dataset.tplId = tpl.id;
     const sw = document.createElement('div');
-    sw.className = tpl.kind === 'worker' ? 'swatch-circle' : 'swatch-square';
+    if (tpl.kind === 'worker') sw.className = 'swatch-circle';
+    else if (tpl.shape === 'triangle') sw.className = 'swatch-triangle';
+    else sw.className = 'swatch-square';
     sw.style.backgroundColor = tpl.color;
     el.appendChild(sw);
     if (tpl.kind === 'worker') {
@@ -634,6 +684,12 @@ function renderPalette() {
       cap.style.cssText = 'position:absolute;bottom:2px;right:4px;font-size:9px;color:#aaa';
       cap.textContent = 'c' + tpl.capacity;
       el.appendChild(cap);
+    }
+    if (tpl.label) {
+      const lbl = document.createElement('div');
+      lbl.style.cssText = 'position:absolute;bottom:2px;left:0;right:0;font-size:8px;color:#aaa;text-align:center;pointer-events:none;line-height:1';
+      lbl.textContent = tpl.label;
+      el.appendChild(lbl);
     }
     el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
     el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
@@ -673,15 +729,16 @@ function startPaletteDrag(e, tpl, sourceEl) {
   ghostEl = document.createElement('div');
   ghostEl.id = 'ghost';
   const isWorker = tpl.kind === 'worker';
-  const size = isWorker ? 26 : 44;
+  const size = isWorker ? 26 : (tpl.shape === 'triangle' ? 12 : 44);
   const radius = isWorker ? '5px' : '0';
   // Match the in-level look: solid fill, no white border, dot pattern overlay for piles.
   const dotsBg = isWorker
     ? ''
     : ';background-image:radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);background-size:6px 6px';
+  const clipPath = tpl.shape === 'triangle' ? ';clip-path:polygon(50% 4%,4% 96%,96% 96%)' : '';
   ghostEl.style.cssText =
     'width:' + size + 'px;height:' + size + 'px;background-color:' + tpl.color +
-    ';border-radius:' + radius + dotsBg;
+    ';border-radius:' + radius + dotsBg + clipPath;
   document.body.appendChild(ghostEl);
   movePaletteGhost(e.clientX, e.clientY);
   // Lifting a pile temporarily switches to Draw Routes view so the player sees existing routes.
@@ -706,8 +763,11 @@ function onPaletteDragEnd(e) {
     const r = containerEl.getBoundingClientRect();
     if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
       const sx = e.clientX - r.left, sy = e.clientY - r.top;
-      if (dragTpl.kind === 'worker') placeWorker(dragTpl, sx, sy);
-      else placeNode(dragTpl, sx, sy);
+      const scale = stage.scaleX() || 1;
+      const wx = (sx - stage.x()) / scale;
+      const wy = (sy - stage.y()) / scale;
+      if (dragTpl.kind === 'worker') placeWorker(dragTpl, wx, wy);
+      else placeNode(dragTpl, wx, wy);
     }
     suppressNextClick = true;
     setTimeout(() => suppressNextClick = false, 50);
@@ -720,6 +780,8 @@ function onPaletteDragEnd(e) {
 function placeNode(tpl, x, y) {
   const node = {
     id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0,
+    shape: tpl.shape || 'rect', label: tpl.label || '',
+    scrap: {},
     states: { hovered: false },
   };
   nodes.push(node);
@@ -775,13 +837,12 @@ function routeEndpoints(route) {
   const fn = nodes.find(n => n.id === route.fromId);
   const tn = nodes.find(n => n.id === route.toId);
   if (!fn || !tn) return null;
-  let fromKey = route.fromAnchor;
-  let toKey = route.toAnchor;
-  if (!fromKey || !toKey) {
-    const d = defaultAnchorsBetween(fn, tn);
-    fromKey = fromKey || d.from; toKey = toKey || d.to;
-  }
-  return { fn, tn, fromKey, toKey, from: anchorPos(fn, fromKey), to: anchorPos(tn, toKey) };
+  const dx = tn.x - fn.x, dy = tn.y - fn.y;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const ux = dx/len, uy = dy/len;
+  const from = { x: fn.x + ux*22, y: fn.y + uy*22 };
+  const to   = { x: tn.x - ux*22, y: tn.y - uy*22 };
+  return { fn, tn, from, to };
 }
 // Snap target while drafting a route. Hits the closest anchor on any pile other than the source,
 // either directly (small radius around the anchor) or via the pile body (snap to closest anchor).
@@ -818,11 +879,8 @@ function anchorAtPoint(x, y, srcNodeId) {
 // applyXState(entity) computes the on-screen presentation for one entity from
 // its current states; refreshAllX() runs over all of that type.
 // ============================================================================
-function applyPileState(node) {
-  const grp = nodeLayer.findOne('#' + node.id); if (!grp) return;
-  // Anchors visible when this pile is hovered OR a line draft is in progress globally.
-  const showAnchors = !!(node.states && node.states.hovered) || !!lineDraft;
-  grp.find('.anchor').forEach(a => a.visible(showAnchors));
+function applyPileState(_node) {
+  // no-op — side anchors removed; pile state drives nothing visual here
 }
 function refreshAllPiles() {
   nodes.forEach(applyPileState);
@@ -867,42 +925,28 @@ const PILE_DOT_PATTERN = (() => {
 })();
 function drawNode(node) {
   const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
-  const shape = new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: node.color, strokeWidth: 1.5, name: 'nodeshape' });
-  const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
-  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
+  const isTriangle = node.shape === 'triangle';
+  const shape = isTriangle
+    ? new Konva.RegularPolygon({ sides: 3, radius: 6, fill: node.color, stroke: node.color, strokeWidth: 1, name: 'nodeshape' })
+    : new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: node.color, strokeWidth: 1.5, name: 'nodeshape' });
+  const hitbox = new Konva.Circle({ radius: isTriangle ? 10 : 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
   const stack = new Konva.Group({ name: 'stack' });
-  grp.add(shape, tex, hitbox, stack);
-  // Connection anchors — one per side. Hidden by default; revealed on hover or during line draft.
-  ANCHORS.forEach(key => {
-    const off = ANCHOR_OFFSETS[key];
-    const a = new Konva.Circle({
-      x: off.x, y: off.y, radius: 5,
-      fill: '#fff', stroke: '#222', strokeWidth: 1.5,
-      name: 'anchor', visible: false,
-    });
-    a.anchorKey = key;
-    a.nodeRef = node;
-    a.on('mousedown', e => onAnchorMouseDown(e, node, key));
-    a.on('mouseenter', () => {
-      containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer";
-      a.scale({ x: 1.5, y: 1.5 });
-      nodeLayer.batchDraw();
-    });
-    a.on('mouseleave', () => {
-      containerEl.style.cursor = MODES[currentMode].cursor;
-      a.scale({ x: 1, y: 1 });
-      nodeLayer.batchDraw();
-    });
-    grp.add(a);
-  });
+  if (!isTriangle) {
+    const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
+    grp.add(shape, tex, hitbox, stack);
+  } else {
+    grp.add(shape, hitbox, stack);
+  }
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
   grp.on('mouseenter', () => {
     enterPileFocus();
     setPileState(node, 'hovered', true);
+    if (currentMode === 'gameInteract') showRadialMenu(node, true);
   });
   grp.on('mouseleave', () => {
     leavePileFocus();
     setPileState(node, 'hovered', false);
+    if (currentMode === 'gameInteract') hideRadialMenuIfGhost();
   });
   nodeLayer.add(grp);
   updateNodeStack(node);
@@ -913,13 +957,21 @@ function updateNodeStack(node) {
   if (!grp) return;
   const stack = grp.findOne('.stack');
   stack.destroyChildren();
-  for (let i = 0; i < node.items; i++) {
-    const t = new Konva.RegularPolygon({
-      x: 0, y: -28 - i * 12, sides: 3, radius: 8,
-      fill: '#f1c40f', stroke: '#fff', strokeWidth: 1
-    });
-    stack.add(t);
-  }
+  const entries = Object.entries(node.scrap || {}).filter(([, c]) => c > 0);
+  entries.forEach(([typeId, count], i) => {
+    const tpl = palette.objects.find(o => o.id === typeId);
+    const color = tpl?.color ?? '#f1c40f';
+    const y = -32 - i * 18;
+    stack.add(new Konva.RegularPolygon({
+      x: -7, y, sides: 3, radius: 6,
+      fill: color, stroke: 'rgba(255,255,255,0.5)', strokeWidth: 0.8, listening: false,
+    }));
+    stack.add(new Konva.Text({
+      x: 2, y: y - 5, text: String(count),
+      fontSize: 10, fontFamily: 'system-ui, sans-serif',
+      fill: '#fff', fontStyle: 'bold', listening: false,
+    }));
+  });
   nodeLayer.batchDraw();
 }
 
@@ -1102,11 +1154,11 @@ function draftPathData(fromX, fromY, fromDir, toX, toY, stub = 18, radius = 14) 
 // Route convenience wrappers — resolve endpoints + directions in one place.
 function routePathData(route) {
   const ep = routeEndpoints(route); if (!ep) return '';
-  return rectilinearPathData(ep.from.x, ep.from.y, anchorDir(ep.fromKey), ep.to.x, ep.to.y, anchorDir(ep.toKey));
+  return `M ${ep.from.x} ${ep.from.y} L ${ep.to.x} ${ep.to.y}`;
 }
 function routeWaypoints(route) {
   const ep = routeEndpoints(route); if (!ep) return [];
-  return rectilinearWaypoints(ep.from.x, ep.from.y, anchorDir(ep.fromKey), ep.to.x, ep.to.y, anchorDir(ep.toKey));
+  return [ep.from, ep.to];
 }
 
 // ===== ORTHOGONAL PATH (single-bend L with rounded corner) =====
@@ -1213,7 +1265,11 @@ function onNodeMouseDown(e, node, grp) {
     showNodeInGpPanel(node);
     return;
   }
-  if (currentMode === 'drawRoutes') {
+  if (currentMode === 'inspectMode') {
+    e.cancelBubble = true;
+    openInspectPanel('pile', node, e.evt.clientX, e.evt.clientY);
+    return;
+  } else if (currentMode === 'drawRoutes') {
     // Routes now start exclusively from anchor circles. Body clicks are no-ops in this mode.
     return;
   } else if (currentMode === 'addItems') {
@@ -1225,7 +1281,7 @@ function onNodeMouseDown(e, node, grp) {
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
   } else if (currentMode === 'gameInteract') {
     e.cancelBubble = true;
-    startNodeMove(node, grp);
+    showRadialMenu(node, false);
   }
 }
 function startNodeMove(node, grp) {
@@ -1250,19 +1306,16 @@ function onAnchorMouseDown(e, node, anchorKey) {
   e.cancelBubble = true;
   startLineDraft(node, anchorKey);
 }
-function startLineDraft(fromNode, fromAnchorKey) {
+function startLineDraft(fromNode) {
   cancelLineDraft();
   const previewColor = peekRouteColor();
-  const from = fromAnchorKey
-    ? anchorPos(fromNode, fromAnchorKey)
-    : { x: fromNode.x, y: fromNode.y };
+  const from = { x: fromNode.x, y: fromNode.y };
   const path = new Konva.Path({ stroke: previewColor, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
   const endA = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
   const endB = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
   uiLayer.add(path, endA, endB);
-  lineDraft = { fromNode, fromAnchorKey, fromX: from.x, fromY: from.y, path, endA, endB, previewColor };
-  pushViewFocus('ViewRoutes'); // keep routes visible for the whole drag, even off the pile
-  setAllAnchorsVisible(true); // reveal anchors on every pile so the user can target one
+  lineDraft = { fromNode, fromX: from.x, fromY: from.y, path, endA, endB, previewColor };
+  pushViewFocus('ViewRoutes');
   uiLayer.batchDraw();
 }
 function cancelLineDraft() {
@@ -1272,11 +1325,11 @@ function cancelLineDraft() {
   lineDraft.endB.destroy();
   lineDraft = null;
   popViewFocus();
-  setAllAnchorsVisible(false);
   uiLayer.batchDraw();
 }
-function nodeAtPoint(x, y) {
+function nodeAtPoint(x, y, excludeId) {
   for (const n of nodes) {
+    if (excludeId && n.id === excludeId) continue;
     const dx = n.x - x, dy = n.y - y;
     if (dx*dx + dy*dy <= 24*24) return n;
   }
@@ -1286,34 +1339,26 @@ stage.on('mousemove', () => {
   if (!lineDraft) return;
   const p = getWorldPointer(); if (!p) return;
   let tx = p.x, ty = p.y;
-  const hit = anchorAtPoint(p.x, p.y, lineDraft.fromNode.id);
-  if (hit) {
-    const ap = anchorPos(hit.node, hit.key);
-    tx = ap.x; ty = ap.y;
-  }
-  const fromDir = anchorDir(lineDraft.fromAnchorKey);
-  const pathD = hit
-    ? rectilinearPathData(lineDraft.fromX, lineDraft.fromY, fromDir, tx, ty, anchorDir(hit.key))
-    : draftPathData(lineDraft.fromX, lineDraft.fromY, fromDir, tx, ty);
-  lineDraft.path.data(pathD);
+  const hitNode = nodeAtPoint(p.x, p.y, lineDraft.fromNode.id);
+  if (hitNode) { tx = hitNode.x; ty = hitNode.y; }
+  lineDraft.path.data(`M ${lineDraft.fromX} ${lineDraft.fromY} L ${tx} ${ty}`);
   lineDraft.endB.position({ x: tx, y: ty });
   uiLayer.batchDraw();
 });
 stage.on('mouseup', () => {
   if (!lineDraft) return;
   const p = getWorldPointer();
-  const hit = p ? anchorAtPoint(p.x, p.y, lineDraft.fromNode.id) : null;
+  const hitNode = p ? nodeAtPoint(p.x, p.y, lineDraft.fromNode.id) : null;
   let created = false;
-  if (hit) {
+  if (hitNode) {
     const exists = routes.some(j =>
-      (j.fromId === lineDraft.fromNode.id && j.toId === hit.node.id) ||
-      (j.toId === lineDraft.fromNode.id && j.fromId === hit.node.id)
+      (j.fromId === lineDraft.fromNode.id && j.toId === hitNode.id) ||
+      (j.toId === lineDraft.fromNode.id && j.fromId === hitNode.id)
     );
     if (!exists) {
       const route = {
         id: uid(),
-        fromId: lineDraft.fromNode.id, toId: hit.node.id,
-        fromAnchor: lineDraft.fromAnchorKey, toAnchor: hit.key,
+        fromId: lineDraft.fromNode.id, toId: hitNode.id,
         color: consumeRouteColor(), workerId: null,
         states: { recentlyCreated: true },
       };
@@ -1324,6 +1369,7 @@ stage.on('mouseup', () => {
     }
   }
   cancelLineDraft();
+  hideRadialMenu();
   if (created) holdRouteView(created.id);
 });
 
@@ -1331,9 +1377,6 @@ stage.on('mouseup', () => {
 function drawRoute(route) {
   const ep = routeEndpoints(route);
   if (!ep) return;
-  // Backfill anchors on legacy/loaded routes that lack them.
-  if (!route.fromAnchor) route.fromAnchor = ep.fromKey;
-  if (!route.toAnchor) route.toAnchor = ep.toKey;
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const path = new Konva.Path({
     data: routePathData(route),
@@ -1405,6 +1448,11 @@ function redrawRoutesTouching(nodeId) {
   if (getEffectiveView() === 'ViewHoverReveal') buildRevealGhosts();
 }
 function onRouteMouseDown(e, route) {
+  if (currentMode === 'inspectMode') {
+    e.cancelBubble = true;
+    openInspectPanel('route', route, e.evt.clientX, e.evt.clientY);
+    return;
+  }
   if (currentMode === 'deleteMode') {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
@@ -1416,6 +1464,11 @@ function onWorkerMouseDown(e, w, grp) {
   if (e.evt.button === 1) {
     e.evt.preventDefault();
     showWorkerInGpPanel(w);
+    return;
+  }
+  if (currentMode === 'inspectMode') {
+    e.cancelBubble = true;
+    openInspectPanel('worker', w, e.evt.clientX, e.evt.clientY);
     return;
   }
   if (currentMode === 'deleteMode') {
@@ -1666,6 +1719,158 @@ function refreshTemplateInstances(tpl) {
   }
 }
 
+// ===== INSPECT PANEL =====
+let inspectTarget = null;
+
+function openInspectPanel(type, entity, clientX, clientY) {
+  inspectTarget = { type, entity };
+  const panel = document.getElementById('inspect-panel');
+  const title = document.getElementById('inspect-title');
+  const idEl  = document.getElementById('inspect-id');
+  const body  = document.getElementById('inspect-body');
+  body.innerHTML = '';
+
+  if (type === 'pile') {
+    const isPile = entity.shape !== 'triangle';
+    title.textContent = isPile ? 'Pile' : ('Scrap — ' + (entity.label || entity.id));
+    idEl.textContent  = 'ID: ' + entity.id + '  ·  pos ' + entity.x + ', ' + entity.y;
+
+    if (isPile) {
+      const scrapTypes = palette.objects.filter(o => o.shape === 'triangle');
+      if (scrapTypes.length) {
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700';
+        hdr.textContent = 'Scrap contents';
+        body.appendChild(hdr);
+        scrapTypes.forEach(tpl => addInspectScrapRow(body, tpl, entity));
+        const div = document.createElement('hr');
+        div.className = 'inspect-divider';
+        body.appendChild(div);
+      }
+    }
+
+    addInspectRow(body, 'Color', 'color', entity.color, null, null, v => {
+      entity.color = v;
+      const grp = nodeLayer.findOne('#' + entity.id);
+      if (grp) {
+        grp.findOne('.nodeshape').fill(v);
+        grp.findOne('.nodeshape').stroke(v);
+        nodeLayer.batchDraw();
+      }
+    });
+
+  } else if (type === 'worker') {
+    const tpl  = palette.workers.find(t => t.id === entity.templateId);
+    const name = tpl?.name ?? '';
+    title.textContent = 'Worker' + (name ? ' — ' + name[0].toUpperCase() + name.slice(1) : '');
+    idEl.textContent  = 'ID: ' + entity.id;
+
+    addInspectRow(body, 'Capacity', 'number', entity.capacity, 1, 20, v => {
+      entity.capacity = v;
+      renderPortraits();
+    });
+    addInspectRow(body, 'Carrying', 'number', entity.carrying, 0, 99, v => {
+      entity.carrying = v;
+      updateWorkerVisual(entity);
+    });
+
+  } else if (type === 'route') {
+    title.textContent = 'Route';
+    idEl.textContent  = entity.fromId + ' → ' + entity.toId + '  ·  ID: ' + entity.id;
+
+    addInspectRow(body, 'Color', 'color', entity.color, null, null, v => {
+      entity.color = v;
+      const grp = edgeLayer.findOne('#' + entity.id);
+      if (grp) {
+        grp.findOne('.routepath').stroke(v);
+        grp.find('.routeend').forEach(c => c.fill(v));
+        edgeLayer.batchDraw();
+      }
+      // Update slot border color too
+      const slot = uiLayer.findOne('#slot_' + entity.id);
+      if (slot) { slot.findOne('Rect').stroke(v); uiLayer.batchDraw(); }
+    });
+  }
+
+  // Position near click, keeping inside viewport
+  const W = 240, H = 180, M = 12;
+  let px = clientX + M;
+  let py = clientY + M;
+  if (px + W > window.innerWidth)  px = clientX - W - M;
+  if (py + H > window.innerHeight) py = clientY - H - M;
+  panel.style.left = Math.max(M, px) + 'px';
+  panel.style.top  = Math.max(M, py) + 'px';
+  panel.hidden = false;
+}
+
+function addInspectRow(container, label, type, value, min, max, onChange) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+  const inp = document.createElement('input');
+  inp.type  = type;
+  inp.value = value;
+  if (type === 'number') {
+    if (min != null) inp.min = min;
+    if (max != null) inp.max = max;
+    inp.oninput = () => {
+      const v = parseInt(inp.value);
+      if (!isNaN(v)) onChange(Math.max(min ?? -Infinity, Math.min(max ?? Infinity, v)));
+    };
+  } else {
+    inp.oninput = () => onChange(inp.value);
+  }
+  row.append(lbl, inp);
+  container.appendChild(row);
+  return inp;
+}
+
+function refreshNodeItems(node) {
+  node.items = Object.values(node.scrap || {}).reduce((s, v) => s + Math.max(0, v | 0), 0);
+}
+
+function addInspectScrapRow(container, scrapTpl, pileNode) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.style.gap = '4px';
+
+  const dot = document.createElement('div');
+  dot.style.cssText = 'width:10px;height:10px;flex-shrink:0;clip-path:polygon(50% 4%,4% 96%,96% 96%);background:' + scrapTpl.color;
+
+  const lbl = document.createElement('label');
+  lbl.textContent = scrapTpl.label || scrapTpl.id;
+  lbl.style.flex = '1';
+
+  const btnStyle = 'width:22px;height:22px;background:#1a1d23;border:1px solid #444;color:#ccc;border-radius:3px;cursor:pointer;font-size:15px;line-height:1;padding:0;flex-shrink:0';
+  const minus = document.createElement('button');
+  minus.textContent = '−'; minus.style.cssText = btnStyle;
+  const countEl = document.createElement('span');
+  countEl.style.cssText = 'width:22px;text-align:center;font-size:12px;color:#fff;display:inline-block;flex-shrink:0';
+  countEl.textContent = (pileNode.scrap || {})[scrapTpl.id] || 0;
+  const plus = document.createElement('button');
+  plus.textContent = '+'; plus.style.cssText = btnStyle;
+
+  const update = delta => {
+    if (!pileNode.scrap) pileNode.scrap = {};
+    pileNode.scrap[scrapTpl.id] = Math.max(0, (pileNode.scrap[scrapTpl.id] || 0) + delta);
+    countEl.textContent = pileNode.scrap[scrapTpl.id];
+    refreshNodeItems(pileNode);
+    updateNodeStack(pileNode);
+  };
+  minus.onclick = () => update(-1);
+  plus.onclick  = () => update(1);
+
+  row.append(dot, lbl, minus, countEl, plus);
+  container.appendChild(row);
+}
+
+function closeInspectPanel() {
+  const panel = document.getElementById('inspect-panel');
+  if (panel) panel.hidden = true;
+  inspectTarget = null;
+}
+
 // ===== HINT =====
 function hideHint() { document.getElementById('hint').style.display = 'none'; }
 
@@ -1863,9 +2068,14 @@ const VISUAL_TYPES = [
     apply: vis => { nodeLayer.find('.node').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
   },
   {
-    key: 'pileItems', label: 'Pile Items', layer: 'physical',
+    key: 'pileItems', label: 'Pile Items', layer: 'virtual',
     getInstances: () => nodes.filter(n => n.items > 0).map(n => ({ id: n.id + '_stk', label: 'Pile ' + n.id + ' (' + n.items + ' items)' })),
     apply: vis => { nodeLayer.find('.stack').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
+  },
+  {
+    key: 'anchors', label: 'Anchors', layer: 'virtual',
+    getInstances: () => nodes.map(n => ({ id: n.id + '_anc', label: 'Pile ' + n.id })),
+    apply: vis => { anchorsVisible = vis; refreshAllPiles(); }
   },
   {
     key: 'routes', label: 'Routes', layer: 'virtual',
@@ -1987,6 +2197,17 @@ function buildRevealGhosts() {
     const rect = grp.findOne('Rect'); if (!rect) return;
     revealLayer.add(new Konva.Rect({ x: grp.x() + rect.x(), y: grp.y() + rect.y(), width: rect.width(), height: rect.height(), cornerRadius: rect.cornerRadius(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: rect.strokeWidth(), dash: rect.dash(), fill: 'rgba(255,255,255,0.03)', listening: false }));
   });
+  nodeLayer.find('.stack').forEach(stackGrp => {
+    const nodeGrp = stackGrp.getParent();
+    stackGrp.getChildren().forEach(el => {
+      revealLayer.add(new Konva.RegularPolygon({
+        x: nodeGrp.x() + el.x(), y: nodeGrp.y() + el.y(),
+        sides: 3, radius: el.radius(),
+        fill: 'rgba(255,255,255,0.25)', stroke: 'rgba(255,255,255,0.4)', strokeWidth: 1,
+        listening: false,
+      }));
+    });
+  });
   workerLayer.find('.workerlabel').forEach(el => {
     const grp = el.getParent();
     revealLayer.add(new Konva.Text({ x: grp.x() + el.x(), y: grp.y() + el.y(), text: el.text(), fontSize: el.fontSize(), fontFamily: el.fontFamily(), fill: 'rgba(255,255,255,0.25)', listening: false }));
@@ -2018,7 +2239,7 @@ function applyDebugVisibility() {
   }
   const view = debugPreviewing ? debugActiveView : effectiveView;
   if (view === 'ViewHoverReveal') {
-    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical'));
+    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical' || t.key === 'anchors'));
     buildRevealGhosts();
     return;
   }
@@ -2226,6 +2447,41 @@ function toggleDebugVis(typeKey) {
   });
 })();
 
+const LOCAL_VIS_RULES = [
+  {
+    name: 'Anchors',
+    driver: 'Pile hover / line draft',
+    note: 'Shown on each pile when hovered or while a route is being drawn. Controlled by anchorsVisible + applyPileState().',
+  },
+  {
+    name: 'Worker ghost',
+    driver: 'Lifting state',
+    note: 'A white marker left at the source position while a worker is being dragged. Shown/hidden by showGhost() / hideGhost() outside the view mode system.',
+  },
+  {
+    name: 'Route slot',
+    driver: 'Route occupancy',
+    note: 'The slot indicator is hidden when a worker is assigned to the route. The routeSlots apply() function adds this condition on top of global visibility.',
+  },
+  {
+    name: 'Carry indicator',
+    driver: 'Carrying count',
+    note: 'Shown on a worker when it is carrying one or more items. Toggled by updateWorkerVisual() independently of view modes.',
+  },
+];
+
+function renderLocalPane() {
+  const pane = document.getElementById('debug-local-pane');
+  if (!pane) return;
+  pane.innerHTML = LOCAL_VIS_RULES.map(r =>
+    `<div class="local-rule">
+      <div class="local-rule-name">${r.name}</div>
+      <div class="local-rule-driver">${r.driver}</div>
+      <div class="local-rule-note">${r.note}</div>
+    </div>`
+  ).join('');
+}
+
 function setDebugTab(tab) {
   debugActiveTab = tab;
   document.querySelectorAll('#debug-tab-bar .debug-tab').forEach(b => {
@@ -2233,9 +2489,12 @@ function setDebugTab(tab) {
   });
   const vm = document.getElementById('debug-viewmodes-pane');
   const op = document.getElementById('debug-options-pane');
+  const lc = document.getElementById('debug-local-pane');
   if (vm) vm.hidden = (tab !== 'viewmodes');
   if (op) op.hidden = (tab !== 'options');
+  if (lc) lc.hidden = (tab !== 'local');
   if (tab === 'options') renderOptionsPane();
+  else if (tab === 'local') renderLocalPane();
   else renderDebugPanel();
 }
 document.querySelectorAll('#debug-tab-bar .debug-tab').forEach(b => {
@@ -2281,9 +2540,11 @@ function serializeLevel() {
     },
     nodes: nodes.map(n => ({
       id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items,
+      shape: n.shape, label: n.label, scrap: n.scrap || {},
     })),
     routes: routes.map(r => ({
       id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId,
+      // fromAnchor/toAnchor intentionally omitted — routes are now pile-to-pile
     })),
     workers: workers.map(w => ({
       id: w.id, templateId: w.templateId, color: w.color, capacity: w.capacity,
@@ -2340,7 +2601,7 @@ function loadLevelData(data) {
 
   // Nodes
   (data.nodes || []).forEach(n => {
-    const node = { id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items || 0 };
+    const node = { id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items || 0, shape: n.shape || 'rect', label: n.label || '', scrap: n.scrap || {} };
     nodes.push(node);
     drawNode(node);
   });
@@ -2348,7 +2609,6 @@ function loadLevelData(data) {
   (data.routes || []).forEach(r => {
     const route = {
       id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId || null,
-      fromAnchor: r.fromAnchor, toAnchor: r.toAnchor,
       states: { recentlyCreated: false },
     };
     routes.push(route);
@@ -2425,6 +2685,138 @@ function setLevelStatus(msg) {
 document.getElementById('btn-save-level').addEventListener('click', downloadLevel);
 document.getElementById('btn-load-level').addEventListener('click', uploadLevel);
 
+// ===== RADIAL MENU =====
+let radialMenu = null; // { nodeId, grp, ghost }
+
+const RM_INNER_R = 38;
+const RM_OUTER_R = 68;
+const RM_MID_R   = (RM_INNER_R + RM_OUTER_R) / 2;
+const RM_SLOTS   = 8;
+
+function rmSlotPos(i) {
+  const angle = (i / RM_SLOTS) * Math.PI * 2 - Math.PI / 2;
+  return { x: Math.cos(angle) * RM_MID_R, y: Math.sin(angle) * RM_MID_R };
+}
+
+function bounceScale(grp) {
+  grp.scale({ x: 0, y: 0 });
+  new Konva.Tween({ node: grp, duration: 0.13, scaleX: 1.18, scaleY: 1.18,
+    easing: Konva.Easings.EaseOut, onFinish: () => {
+    new Konva.Tween({ node: grp, duration: 0.09, scaleX: 0.93, scaleY: 0.93,
+      easing: Konva.Easings.Linear, onFinish: () => {
+      new Konva.Tween({ node: grp, duration: 0.07, scaleX: 1, scaleY: 1,
+        easing: Konva.Easings.EaseOut,
+      }).play();
+    }}).play();
+  }}).play();
+}
+
+function showRmSlider(menuGrp, slotPos) {
+  menuGrp.findOne('.rm-slider')?.destroy();
+
+  const TRACK_H = 72;
+  const sg = new Konva.Group({ x: slotPos.x + 20, y: slotPos.y - TRACK_H / 2, name: 'rm-slider' });
+
+  sg.add(new Konva.Line({
+    points: [0, 0, 0, TRACK_H], stroke: 'rgba(255,255,255,0.3)', strokeWidth: 2, listening: false,
+  }));
+  sg.add(new Konva.Text({ x: 5, y: -2,          text: '∞', fill: '#fff', fontSize: 12, listening: false }));
+  sg.add(new Konva.Text({ x: 5, y: TRACK_H - 8, text: '0', fill: '#888', fontSize: 10, listening: false }));
+
+  const valLbl = new Konva.Text({
+    x: -36, y: -6, text: '∞', fill: '#fff', fontSize: 12, fontStyle: 'bold',
+    width: 30, align: 'right', listening: false,
+  });
+  sg.add(valLbl);
+
+  const handle = new Konva.Circle({ x: 0, y: 0, radius: 7, fill: '#fff', draggable: true });
+  handle.on('dragmove', () => {
+    handle.x(0);
+    const y = Math.max(0, Math.min(TRACK_H, handle.y()));
+    handle.y(y);
+    const t = y / TRACK_H;
+    valLbl.y(y - 6);
+    valLbl.text(t < 0.05 ? '∞' : Math.round((1 - t) * 40).toString());
+    uiLayer.batchDraw();
+  });
+  sg.add(handle);
+
+  menuGrp.add(sg);
+  uiLayer.batchDraw();
+}
+
+function buildRmGroup(node, ghost) {
+  const grp = new Konva.Group({ x: node.x, y: node.y, listening: !ghost });
+
+  grp.add(new Konva.Ring({
+    innerRadius: RM_INNER_R, outerRadius: RM_OUTER_R,
+    fill: ghost ? 'rgba(55,60,75,0.30)' : 'rgba(55,60,75,0.82)',
+    listening: false,
+  }));
+
+  for (let i = 0; i < RM_SLOTS; i++) {
+    const p = rmSlotPos(i);
+    grp.add(new Konva.Circle({
+      x: p.x, y: p.y, radius: 10,
+      fill: ghost ? 'rgba(35,40,52,0.35)' : 'rgba(35,40,52,0.90)',
+      listening: false,
+    }));
+  }
+
+  // Worker-type icons in the first N slots
+  palette.workers.slice(0, RM_SLOTS).forEach((w, i) => {
+    const p = rmSlotPos(i);
+    const icon = new Konva.RegularPolygon({
+      x: p.x, y: p.y, sides: 3, radius: 8,
+      fill:   ghost ? 'rgba(160,160,160,0.25)' : w.color,
+      stroke: ghost ? 'transparent'            : 'rgba(255,255,255,0.35)',
+      strokeWidth: 1, listening: !ghost, name: 'rm-icon',
+    });
+    if (!ghost) {
+      icon.on('mouseenter', () => { icon.radius(10); uiLayer.batchDraw(); });
+      icon.on('mouseleave', () => { icon.radius(8);  uiLayer.batchDraw(); });
+      icon.on('mousedown',  e  => { e.cancelBubble = true; showRmSlider(grp, p); });
+    }
+    grp.add(icon);
+  });
+
+  // Centre circle — drag from here to draw a route
+  const centre = new Konva.Circle({
+    radius: 10,
+    fill:   ghost ? 'rgba(255,255,255,0.12)' : '#ffffff',
+    stroke: ghost ? 'transparent'            : 'rgba(0,0,0,0.25)',
+    strokeWidth: 1.5, listening: !ghost, name: 'rm-centre',
+  });
+  if (!ghost) {
+    centre.on('mouseenter', () => { containerEl.style.cursor = 'crosshair'; });
+    centre.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
+    centre.on('mousedown',  e  => { e.cancelBubble = true; startLineDraft(node, null); });
+  }
+  grp.add(centre);
+  return grp;
+}
+
+function showRadialMenu(node, ghost) {
+  if (radialMenu && !radialMenu.ghost && ghost) return; // don't downgrade active → ghost
+  hideRadialMenu();
+  const grp = buildRmGroup(node, ghost);
+  uiLayer.add(grp);
+  radialMenu = { nodeId: node.id, grp, ghost };
+  if (!ghost) bounceScale(grp);
+  uiLayer.batchDraw();
+}
+
+function hideRadialMenu() {
+  if (!radialMenu) return;
+  radialMenu.grp.destroy();
+  radialMenu = null;
+  uiLayer.batchDraw();
+}
+
+function hideRadialMenuIfGhost() {
+  if (radialMenu?.ghost) hideRadialMenu();
+}
+
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
 let metaOpen = true;
@@ -2471,6 +2863,47 @@ function loadDefault() {
 
 document.getElementById('btn-save-default').addEventListener('click', saveDefault);
 document.getElementById('btn-load-default').addEventListener('click', loadDefault);
+
+// ===== CHECKPOINT =====
+const CHECKPOINT_KEY = 'uxproto_checkpoint';
+
+function updateCheckpointBtn() {
+  const btn = document.getElementById('btn-restore-checkpoint');
+  const has = !!localStorage.getItem(CHECKPOINT_KEY);
+  btn.disabled = !has;
+  btn.style.opacity = has ? '1' : '0.4';
+  btn.style.borderColor = has ? 'rgba(255,200,80,0.6)' : '';
+  btn.style.color = has ? 'rgba(255,200,80,0.9)' : '';
+}
+
+function saveCheckpoint() {
+  try {
+    localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(serializeLevel()));
+    setMetaStatus('Checkpoint set.', true);
+    updateCheckpointBtn();
+  } catch (e) {
+    setMetaStatus('Checkpoint failed.', false);
+  }
+}
+
+function restoreCheckpoint() {
+  const raw = localStorage.getItem(CHECKPOINT_KEY);
+  if (!raw) { setMetaStatus('No checkpoint.', false); return; }
+  try {
+    loadLevelData(JSON.parse(raw));
+    setMetaStatus('Checkpoint restored.', true);
+  } catch (e) {
+    setMetaStatus('Restore failed: ' + e.message, false);
+  }
+}
+
+document.getElementById('btn-set-checkpoint').addEventListener('click', saveCheckpoint);
+document.getElementById('btn-restore-checkpoint').addEventListener('click', restoreCheckpoint);
+updateCheckpointBtn();
+document.getElementById('btn-inspect-tool').addEventListener('click', () => {
+  if (currentMode === 'inspectMode') setMode('gameInteract');
+  else setMode('inspectMode');
+});
 
 let gpOpen = false;
 function toggleGpPanel() {
