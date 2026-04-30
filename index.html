@@ -224,7 +224,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.1#3';
+const APP_VERSION = '0.1.1#6';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -378,7 +378,26 @@ const nodeLayer = new Konva.Layer();
 const workerLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
 stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
-document.getElementById('version-label').textContent = 'v' + APP_VERSION;
+const versionEl = document.getElementById('version-label');
+versionEl.textContent = 'v' + APP_VERSION;
+
+async function checkLatestVersion() {
+  try {
+    const res = await fetch(location.href + '?_v=' + Date.now());
+    const text = await res.text();
+    const match = text.match(/APP_VERSION\s*=\s*'([^']+)'/);
+    if (!match) return;
+    const latest = match[1];
+    if (latest !== APP_VERSION) {
+      versionEl.textContent = 'v' + APP_VERSION + ' — v' + latest + ' available ↻';
+      versionEl.style.color = 'rgba(255,200,80,0.7)';
+      versionEl.style.cursor = 'pointer';
+      versionEl.onclick = () => location.reload();
+    }
+  } catch (_) {}
+}
+checkLatestVersion();
+setInterval(checkLatestVersion, 60_000);
 
 // Konva's getPointerPosition returns SCREEN-relative coords (within the stage container),
 // not world coords. With pan/zoom on, anything that compares against world-space data
@@ -823,8 +842,8 @@ function drawWorker(w) {
   }
   grp.add(c, hitbox, carry);
   grp.on('mousedown', e => onWorkerMouseDown(e, w, grp));
-  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; });
-  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
+  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; w.states.hovered = true; workerSay(w, 'hm?'); });
+  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; w.states.hovered = false; });
   workerLayer.add(grp);
 
   // Per-worker ghost — same body shape, white at 30% opacity. Persistent shape, hidden by default.
@@ -863,6 +882,26 @@ function hideGhost(w) {
   g.visible(false);
   workerLayer.batchDraw();
 }
+function workerSay(w, text) {
+  const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
+  grp.findOne('.speechbubble')?.destroy();
+  const pad = 6, tailW = 7, tailH = 6;
+  const bubble = new Konva.Group({ name: 'speechbubble', listening: false });
+  const label = new Konva.Text({
+    text, fontSize: 13, fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
+    fontStyle: 'bold', fill: '#1a1a1a', listening: false,
+  });
+  const tw = label.width(), th = label.height();
+  const bg = new Konva.Rect({ x: 0, y: 0, width: tw + pad * 2, height: th + pad * 2, fill: '#fff', cornerRadius: 5, shadowColor: 'rgba(0,0,0,0.3)', shadowBlur: 6, shadowOffsetY: 2, listening: false });
+  const tail = new Konva.Line({ points: [0, (th + pad * 2) / 2 - tailH / 2, -tailW, (th + pad * 2) / 2, 0, (th + pad * 2) / 2 + tailH / 2], fill: '#fff', closed: true, listening: false });
+  label.position({ x: pad, y: pad });
+  bubble.add(bg, tail, label);
+  bubble.position({ x: 20, y: -(th / 2 + pad) });
+  grp.add(bubble);
+  workerLayer.batchDraw();
+  setTimeout(() => { bubble.destroy(); workerLayer.batchDraw(); }, 1500);
+}
+
 function updateWorkerVisual(w) {
   const grp = workerLayer.findOne('#' + w.id);
   if (!grp) return;
@@ -1284,10 +1323,12 @@ function onWorkerMouseDown(e, w, grp) {
       w.carrying = 0;
       w.targetX = mid.x; w.targetY = mid.y;
       showGhost(w, mid.x, mid.y);
+      workerSay(w, 'Back to work!');
     } else if (p) {
       // Drop on empty space → command the worker to walk there. Ghost stays at drop point.
       w.targetX = snap(p.x); w.targetY = snap(p.y);
       showGhost(w, w.targetX, w.targetY);
+      workerSay(w, 'Alright');
     } else {
       hideGhost(w);
     }
@@ -1543,6 +1584,7 @@ const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
   let dirty = false;
   workers.forEach(w => {
+    if (w.states?.hovered) return;
     // Walk to a commanded target (free-walk OR pre-shuttle approach to a route).
     if (w.targetX != null) {
       const dx = w.targetX - w.x, dy = w.targetY - w.y;
