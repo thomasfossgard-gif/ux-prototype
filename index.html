@@ -37,16 +37,57 @@
   #confirm-dialog button:hover { background: #4a90e2; }
   .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
   #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(255,255,255,0.2); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
-  #reload-btn { position: absolute; bottom: 10px; right: 130px; background: none; border: none; color: rgba(255,255,255,0.2); font-size: 18px; cursor: pointer; padding: 2px 6px; line-height: 1; }
-  #reload-btn:hover { color: rgba(255,255,255,0.7); }
+  #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: 12px; z-index: 10; }
+  #meta-controls { background: #232730; border: 1px solid #333; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; flex-shrink: 0; }
+  #meta-controls-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #2a2d35; }
+  #meta-controls-header.collapsed { border-bottom: none; }
+  #meta-controls-header button { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+  #meta-controls-header button:hover { color: #fff; }
+  #meta-controls-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #meta-controls-body[hidden] { display: none; }
+  .meta-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #meta-reload-btn { background: #2c313c; border: 1px solid #444; border-radius: 6px; color: rgba(255,255,255,0.5); font-size: 18px; cursor: pointer; padding: 3px 10px; line-height: 1; transition: color 0.2s, background 0.2s, border-color 0.2s; }
+  #meta-reload-btn:hover { color: rgba(255,255,255,0.9); background: #3a4150; }
+  #meta-reload-btn.has-update { background: rgba(255,200,80,0.15); border-color: rgba(255,200,80,0.5); color: rgba(255,200,80,0.9); }
+  #meta-reload-btn.has-update:hover { background: rgba(255,200,80,0.3); border-color: rgba(255,200,80,0.9); }
+  .meta-btn { padding: 4px 10px; background: #2c313c; border: 1px solid #444; color: #ccc; cursor: pointer; border-radius: 5px; font-size: 11px; transition: background 0.1s, border-color 0.1s; }
+  .meta-btn:hover { background: #3a4150; border-color: #666; color: #fff; }
+  #meta-status { font-size: 10px; color: #555; min-height: 14px; }
   #mode-label { position: absolute; top: 80px; left: 16px; color: rgba(255,255,255,0.10); font-size: 56px; font-weight: 800; letter-spacing: 1px; pointer-events: none; line-height: 1; text-transform: uppercase; }
-  #worker-portraits { position: absolute; top: 12px; left: 12px; display: flex; gap: 10px; z-index: 5; align-items: flex-start; }
+  #worker-portraits { display: flex; gap: 10px; align-items: flex-start; }
   .portrait-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
   .portrait { width: 52px; height: 52px; border-radius: 10px; border: 3px solid rgba(255,255,255,0.25); position: relative; transition: all 0.12s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); background-size: cover; background-position: center top; overflow: hidden; }
   .portrait-wrap:hover .portrait { border-color: rgba(255,255,255,0.6); }
   .portrait-wrap.selected .portrait { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.4); }
   .portrait .cap-badge { position: absolute; bottom: -4px; right: -4px; background: #232730; color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 8px; border: 1px solid #444; line-height: 1; z-index: 2; }
   .portrait-name { color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center; letter-spacing: 0.4px; pointer-events: none; }
+  /* ===== GAMEPLAY PROPERTIES PANEL ===== */
+  #gp-panel {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
+    background: #2b2b2b; border-right: 1px solid #1c1c1c;
+    z-index: 20; display: flex; flex-direction: column;
+    transform: translateX(-280px); transition: transform 0.18s ease;
+    color: #ddd;
+  }
+  #gp-panel.open { transform: translateX(0); }
+  #gp-toggle {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+    background: #232730; border: 1px solid #333; border-left: none;
+    color: #777; cursor: pointer; padding: 14px 5px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    z-index: 21; border-radius: 0 6px 6px 0;
+    writing-mode: vertical-rl; transition: left 0.18s ease;
+  }
+  #gp-toggle:hover { color: #fff; background: #2c313c; }
+  #gp-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-bottom: 1px solid #1c1c1c;
+    font-size: 10px; font-weight: 700; color: #888;
+    text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0;
+  }
+  #gp-panel-header button { background: none; border: none; color: #555; cursor: pointer; font-size: 16px; line-height: 1; }
+  #gp-panel-header button:hover { color: #fff; }
+  #gp-content { flex: 1; overflow-y: auto; padding: 12px; }
   /* ===== DEBUG PANEL ===== */
   #debug-panel {
     position: fixed; right: 0; top: 0; bottom: 0; width: 280px;
@@ -152,10 +193,25 @@
   </div>
   <div id="canvas-container">
     <div id="canvas"></div>
-    <div id="worker-portraits"></div>
+    <div id="top-center-bar">
+      <div id="worker-portraits"></div>
+      <div id="meta-controls">
+        <div id="meta-controls-header">
+          <span>MetaControls</span>
+          <button id="meta-controls-toggle" title="Collapse">−</button>
+        </div>
+        <div id="meta-controls-body">
+          <div class="meta-row">
+            <button id="meta-reload-btn" title="Reload page">↻</button>
+            <button id="btn-save-default" class="meta-btn">Save Default</button>
+            <button id="btn-load-default" class="meta-btn">Load Default</button>
+          </div>
+          <div id="meta-status"></div>
+        </div>
+      </div>
+    </div>
     <div id="mode-label">Mode: Game Interact</div>
     <div id="version-label"></div>
-    <button id="reload-btn" title="Reload" onclick="location.reload()">↻</button>
     <div class="hint" id="hint">
       Drag a pile from the top palette into this area.<br>
       Use <b>Draw Route</b> to drag a line between two piles.<br>
@@ -206,6 +262,15 @@
     </div>
   </div>
 </div>
+<div id="gp-panel">
+  <div id="gp-panel-header">
+    <span>Gameplay Properties</span>
+    <button onclick="toggleGpPanel()">&times;</button>
+  </div>
+  <div id="gp-content">
+  </div>
+</div>
+<button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
 <button id="debug-toggle" onclick="toggleDebugPanel()">DEBUG</button>
 <div id="property-window" hidden>
   <button class="close" title="Close">&times;</button>
@@ -226,7 +291,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.1#9';
+const APP_VERSION = '0.1.2#1';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -250,8 +315,10 @@ let selectedWorkerId = null;
 // State values: 'hidden' | 'visible' | 'highlighted'. ('highlighted' renders the
 // same as 'visible' for now — placeholder until per-type highlighting lands.)
 const VIEW_MODES = {
-  ViewDefault: { display: 'View Default', visible: {} },
-  ViewRoutes:  { display: 'View Routes',  visible: {} },
+  ViewDefault:     { display: 'View Default',  visible: {} },
+  ViewRoutes:      { display: 'View Routes',   visible: {} },
+  ViewGhost:       { display: 'View Ghost',    visible: {} },
+  ViewHoverReveal: { display: 'Hover Reveal',  visible: {}, readonly: true },
 };
 const VIS_STATES = ['visible', 'hidden', 'highlighted']; // cycle order on toggle
 const MODES = {
@@ -319,7 +386,7 @@ function popTransientMode() {
 let pileFocusDepth = 0;
 function enterPileFocus() {
   pileFocusDepth++;
-  if (pileFocusDepth === 1) pushViewFocus('ViewRoutes');
+  if (pileFocusDepth === 1) pushViewFocus(currentMode === 'drawRoutes' ? 'ViewRoutes' : 'ViewHoverReveal');
 }
 function leavePileFocus() {
   if (pileFocusDepth === 0) return;
@@ -379,13 +446,15 @@ const edgeLayer = new Konva.Layer();
 const nodeLayer = new Konva.Layer();
 const workerLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
-stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
+const revealLayer = new Konva.Layer({ listening: false });
+stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer, revealLayer);
 const versionEl = document.getElementById('version-label');
 versionEl.textContent = 'v' + APP_VERSION;
 
-const reloadBtn = document.getElementById('reload-btn');
+const reloadBtn = document.getElementById('meta-reload-btn');
+reloadBtn.addEventListener('click', () => location.reload());
 function flagUpdateAvailable() {
-  reloadBtn.style.color = 'rgba(255,200,80,0.9)';
+  reloadBtn.classList.add('has-update');
   reloadBtn.title = 'Update available — click to reload';
 }
 
@@ -409,9 +478,10 @@ async function checkLatestVersion() {
 let initialFileStamp = null;
 async function checkFileChanged() {
   try {
-    const res = await fetch(location.href + '?_v=' + Date.now(), { method: 'HEAD' });
+    const url = location.origin + location.pathname + '?_v=' + Date.now();
+    const res = await fetch(url, { method: 'HEAD' });
     const stamp = res.headers.get('etag') || res.headers.get('last-modified');
-    if (!stamp) return; // server doesn't support — skip
+    if (!stamp) return;
     if (initialFileStamp === null) { initialFileStamp = stamp; return; }
     if (stamp !== initialFileStamp) flagUpdateAvailable();
   } catch (_) {}
@@ -507,6 +577,15 @@ window.addEventListener('mouseup', () => {
   if (!panStart) return;
   panStart = null;
   containerEl.style.cursor = MODES[currentMode].cursor;
+});
+
+// Deselect worker when clicking empty canvas in game interact mode.
+stage.on('click', e => {
+  if (e.evt.button !== 0) return;
+  if (e.target !== stage) return;
+  if (currentMode === 'gameInteract' && selectedWorkerId !== null) {
+    selectWorker(null);
+  }
 });
 
 // suppress browser context menu over canvas
@@ -647,6 +726,14 @@ function placeNode(tpl, x, y) {
   drawNode(node);
   hideHint();
 }
+const WORKER_PORTRAITS = {};
+palette.workers.forEach(tpl => {
+  if (!tpl.name) return;
+  const img = new Image();
+  img.src = `icons/icon_worker_${tpl.name}.png`;
+  WORKER_PORTRAITS[tpl.name] = img;
+});
+
 const STRIPE_PATTERN = (() => {
   const c = document.createElement('canvas');
   c.width = 8; c.height = 8;
@@ -751,10 +838,10 @@ function applyWorkerState(w) {
   const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
   const c = grp.findOne('.workercircle');
   if (w.states && w.states.selected) {
-    c.strokeWidth(4);
+    c.stroke('#ffffff'); c.strokeWidth(3);
     c.shadowColor('#ffffff'); c.shadowBlur(14); c.shadowOpacity(0.85);
   } else {
-    c.strokeWidth(1.5);
+    c.stroke('rgba(255,255,255,0.35)'); c.strokeWidth(1.5);
     c.shadowOpacity(0); c.shadowBlur(0);
   }
 }
@@ -853,26 +940,34 @@ function drawWorker(w) {
   const name = tpl?.name ?? '';
   const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
 
+  const S = 16; // half-size: worker is 32×32
+  const img = WORKER_PORTRAITS[name];
+  const iw = img?.naturalWidth || 128, ih = img?.naturalHeight || 128;
+  const zoom = 1.2, cw = iw / zoom, ch = ih / zoom;
   const grp = new Konva.Group({ x: w.x, y: w.y, id: w.id, name: 'worker' });
-  const c = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, cornerRadius: 5, fill: w.color, stroke: w.color, strokeWidth: 1.5, name: 'workercircle' });
-  const hitbox = new Konva.Rect({ x: -13, y: -13, width: 26, height: 26, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
+  const c = new Konva.Image({
+    image: img, x: -S, y: -S, width: S*2, height: S*2, cornerRadius: 6,
+    cropX: (iw - cw) / 2, cropY: (ih - ch) / 2, cropWidth: cw, cropHeight: ch,
+    stroke: 'rgba(255,255,255,0.35)', strokeWidth: 1.5, name: 'workercircle',
+  });
+  const hitbox = new Konva.Rect({ x: -S, y: -S, width: S*2, height: S*2, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
   // small carry indicator
   const carry = new Konva.RegularPolygon({ sides: 3, radius: 5, fill: '#f1c40f', stroke: '#fff', strokeWidth: 1, y: 0, name: 'carry', visible: false });
   if (displayName) {
-    const label = new Konva.Text({ text: displayName, fontSize: 10, fontFamily: 'system-ui, sans-serif', fill: 'rgba(255,255,255,0.75)', y: 16, listening: false, name: 'workerlabel' });
+    const label = new Konva.Text({ text: displayName, fontSize: 10, fontFamily: 'system-ui, sans-serif', fill: 'rgba(255,255,255,0.75)', y: S + 3, listening: false, name: 'workerlabel' });
     label.x(-label.width() / 2);
     grp.add(label);
   }
   grp.add(c, hitbox, carry);
   grp.on('mousedown', e => onWorkerMouseDown(e, w, grp));
-  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; w.states.hovered = true; workerSay(w, 'hm?'); });
-  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; w.states.hovered = false; });
+  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; w.states.hovered = true; workerSay(w, 'hm?'); enterWorkerHover(); });
+  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; w.states.hovered = false; exitWorkerHover(); });
   workerLayer.add(grp);
 
   // Per-worker ghost — same body shape, white at 30% opacity. Persistent shape, hidden by default.
   // Visible while lifting (follows cursor) and while the worker is walking toward its commanded target.
   const ghostBody = new Konva.Rect({
-    x: -13, y: -13, width: 26, height: 26, cornerRadius: 5,
+    x: -S, y: -S, width: S*2, height: S*2, cornerRadius: 6,
     fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.5)', strokeWidth: 1.5,
     listening: false,
   });
@@ -1068,9 +1163,54 @@ function pointAtFraction(wp, frac) {
 
 // ===== ROUTE DRAFTING =====
 let lineDraft = null;
+function gpPanelTable(rows) {
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    ${rows.map(([k,v]) => `
+      <tr>
+        <td style="color:#888;padding:5px 4px;border-bottom:1px solid #1c1c1c;width:45%">${k}</td>
+        <td style="color:#ddd;padding:5px 4px;border-bottom:1px solid #1c1c1c">${v}</td>
+      </tr>`).join('')}
+  </table>`;
+}
+function gpSectionTitle(label) {
+  return `<div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">${label}</div>`;
+}
+
+function showNodeInGpPanel(node) {
+  if (!gpOpen) toggleGpPanel();
+  const content = document.getElementById('gp-content');
+  content.innerHTML = gpSectionTitle('Pile') + gpPanelTable([
+    ['ID',       node.id],
+    ['Position', `${Math.round(node.x)}, ${Math.round(node.y)}`],
+    ['Items',    node.items],
+    ['Routes',   routes.filter(r => r.fromId === node.id || r.toId === node.id).length],
+  ]);
+}
+
+function showWorkerInGpPanel(w) {
+  if (!gpOpen) toggleGpPanel();
+  const tpl = palette.workers.find(t => t.id === w.templateId);
+  const name = tpl?.name ?? '';
+  const route = routes.find(r => r.id === w.routeId);
+  const content = document.getElementById('gp-content');
+  content.innerHTML = gpSectionTitle('Character') + `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <img src="icons/icon_worker_${name}.png" style="width:52px;height:52px;border-radius:8px;border:2px solid #444">
+      <span style="font-size:16px;font-weight:700;color:#ddd;text-transform:capitalize">${name}</span>
+    </div>` +
+    gpPanelTable([
+      ['ID',       w.id],
+      ['Capacity', w.capacity],
+      ['Carrying', w.carrying],
+      ['Route',    route ? `${route.fromId} → ${route.toId}` : '—'],
+      ['Position', `${Math.round(w.x)}, ${Math.round(w.y)}`],
+    ]);
+}
+
 function onNodeMouseDown(e, node, grp) {
-  if (e.evt.button === 2) {
-    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
+  if (e.evt.button === 1) {
+    e.evt.preventDefault();
+    showNodeInGpPanel(node);
     return;
   }
   if (currentMode === 'drawRoutes') {
@@ -1262,12 +1402,9 @@ function redrawRoutesTouching(nodeId) {
   });
   edgeLayer.batchDraw();
   uiLayer.batchDraw();
+  if (getEffectiveView() === 'ViewHoverReveal') buildRevealGhosts();
 }
 function onRouteMouseDown(e, route) {
-  if (e.evt.button === 2) {
-    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
-    return;
-  }
   if (currentMode === 'deleteMode') {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
@@ -1276,8 +1413,9 @@ function onRouteMouseDown(e, route) {
 
 // ===== WORKER LIFTING & ASSIGNMENT =====
 function onWorkerMouseDown(e, w, grp) {
-  if (e.evt.button === 2) {
-    showConfirm(e.evt.clientX, e.evt.clientY, 'Delete worker?', () => deleteWorker(w));
+  if (e.evt.button === 1) {
+    e.evt.preventDefault();
+    showWorkerInGpPanel(w);
     return;
   }
   if (currentMode === 'deleteMode') {
@@ -1702,7 +1840,7 @@ anim.start();
 // ===== DEBUG PANEL =====
 const VISUAL_TYPES = [
   {
-    key: 'workers', label: 'Workers',
+    key: 'workers', label: 'Workers', layer: 'physical',
     getInstances: () => workers.map(w => {
       const tpl = palette.workers.find(t => t.id === w.templateId);
       const n = tpl?.name ?? '';
@@ -1711,7 +1849,7 @@ const VISUAL_TYPES = [
     apply: vis => { workerLayer.find('.worker').forEach(g => g.visible(vis)); workerLayer.batchDraw(); }
   },
   {
-    key: 'workerLabels', label: 'Worker Labels',
+    key: 'workerLabels', label: 'Worker Labels', layer: 'virtual',
     getInstances: () => workers.map(w => {
       const tpl = palette.workers.find(t => t.id === w.templateId);
       const n = tpl?.name ?? '';
@@ -1720,27 +1858,27 @@ const VISUAL_TYPES = [
     apply: vis => { workerLayer.find('.workerlabel').forEach(el => el.visible(vis)); workerLayer.batchDraw(); }
   },
   {
-    key: 'piles', label: 'Piles',
+    key: 'piles', label: 'Piles', layer: 'physical',
     getInstances: () => nodes.map(n => ({ id: n.id, label: 'Pile ' + n.id })),
     apply: vis => { nodeLayer.find('.node').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
   },
   {
-    key: 'pileItems', label: 'Pile Items',
+    key: 'pileItems', label: 'Pile Items', layer: 'physical',
     getInstances: () => nodes.filter(n => n.items > 0).map(n => ({ id: n.id + '_stk', label: 'Pile ' + n.id + ' (' + n.items + ' items)' })),
     apply: vis => { nodeLayer.find('.stack').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
   },
   {
-    key: 'routes', label: 'Routes',
+    key: 'routes', label: 'Routes', layer: 'virtual',
     getInstances: () => routes.map(r => ({ id: r.id, label: r.fromId + ' → ' + r.toId })),
     apply: vis => { edgeLayer.find('.routepath').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
   },
   {
-    key: 'routeEnds', label: 'Route Ends',
+    key: 'routeEnds', label: 'Route Ends', layer: 'virtual',
     getInstances: () => routes.map(r => ({ id: r.id + '_ends', label: 'Route ' + r.id })),
     apply: vis => { edgeLayer.find('.routeend').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
   },
   {
-    key: 'routeSlots', label: 'Route Slots',
+    key: 'routeSlots', label: 'Route Slots', layer: 'virtual',
     getInstances: () => routes.filter(r => !r.workerId).map(r => ({ id: r.id + '_slot', label: 'Slot for ' + r.id })),
     apply: vis => {
       uiLayer.find('.slot').forEach(s => {
@@ -1751,7 +1889,7 @@ const VISUAL_TYPES = [
     }
   },
   {
-    key: 'grid', label: 'Grid',
+    key: 'grid', label: 'Grid', layer: 'virtual',
     getInstances: () => [{ id: 'grid', label: 'Background grid' }],
     apply: vis => { gridLayer.visible(vis); gridLayer.batchDraw(); }
   },
@@ -1761,7 +1899,10 @@ const VISUAL_TYPES = [
 Object.keys(VIEW_MODES).forEach(viewKey => {
   VISUAL_TYPES.forEach(t => {
     let val = 'visible';
-    if (t.key === 'routes' || t.key === 'routeEnds' || t.key === 'routeSlots') {
+    if (viewKey === 'ViewGhost') {
+      // Ghost view: show physical objects normally; virtual types appear only as ghost overlays.
+      val = t.layer === 'physical' ? 'visible' : 'hidden';
+    } else if (viewKey !== 'ViewHoverReveal' && (t.key === 'routes' || t.key === 'routeEnds' || t.key === 'routeSlots')) {
       val = (viewKey === 'ViewRoutes') ? 'visible' : 'hidden';
     }
     VIEW_MODES[viewKey].visible[t.key] = val;
@@ -1834,6 +1975,34 @@ function applyHitboxVisibility() {
 }
 
 let debugPreviewing = false; // true while the panel is overriding the live view
+function buildRevealGhosts() {
+  revealLayer.destroyChildren();
+  edgeLayer.find('.routepath').forEach(el => {
+    revealLayer.add(new Konva.Path({ data: el.data(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: el.strokeWidth(), lineCap: 'round', lineJoin: 'round', listening: false }));
+  });
+  edgeLayer.find('.routeend').forEach(el => {
+    revealLayer.add(new Konva.Circle({ x: el.x(), y: el.y(), radius: el.radius(), fill: 'rgba(255,255,255,0.25)', listening: false }));
+  });
+  uiLayer.find('.slot').forEach(grp => {
+    const rect = grp.findOne('Rect'); if (!rect) return;
+    revealLayer.add(new Konva.Rect({ x: grp.x() + rect.x(), y: grp.y() + rect.y(), width: rect.width(), height: rect.height(), cornerRadius: rect.cornerRadius(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: rect.strokeWidth(), dash: rect.dash(), fill: 'rgba(255,255,255,0.03)', listening: false }));
+  });
+  workerLayer.find('.workerlabel').forEach(el => {
+    const grp = el.getParent();
+    revealLayer.add(new Konva.Text({ x: grp.x() + el.x(), y: grp.y() + el.y(), text: el.text(), fontSize: el.fontSize(), fontFamily: el.fontFamily(), fill: 'rgba(255,255,255,0.25)', listening: false }));
+  });
+  revealLayer.batchDraw();
+}
+function clearRevealGhosts() {
+  revealLayer.destroyChildren();
+  revealLayer.batchDraw();
+}
+
+// Hover reveal depth — both pile hover and worker hover push ViewHoverReveal.
+let workerHoverDepth = 0;
+function enterWorkerHover() { workerHoverDepth++; if (workerHoverDepth === 1) pushViewFocus('ViewHoverReveal'); }
+function exitWorkerHover()  { if (workerHoverDepth === 0) return; workerHoverDepth--; if (workerHoverDepth === 0) popViewFocus(); }
+
 function applyDebugVisibility() {
   // The Debug → View Modes tab is purely about visual states. While the user is
   // previewing a specific view via the panel, that view drives the live display.
@@ -1841,14 +2010,27 @@ function applyDebugVisibility() {
   const effectiveView = viewFocusStack.length
     ? viewFocusStack[viewFocusStack.length - 1]
     : MODES[currentMode].view;
-  if (!debugPreviewing && debugActiveView !== effectiveView) {
-    debugActiveView = effectiveView;
+  // ViewHoverReveal is readonly — track the panel to its public alias ViewGhost.
+  const panelView = effectiveView === 'ViewHoverReveal' ? 'ViewGhost' : effectiveView;
+  if (!debugPreviewing && debugActiveView !== panelView) {
+    debugActiveView = panelView;
     if (debugOpen) renderDebugPanel();
   }
   const view = debugPreviewing ? debugActiveView : effectiveView;
+  if (view === 'ViewHoverReveal') {
+    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical'));
+    buildRevealGhosts();
+    return;
+  }
+  if (view === 'ViewGhost') {
+    const vis = VIEW_MODES.ViewGhost.visible;
+    VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
+    buildRevealGhosts();
+    return;
+  }
+  clearRevealGhosts();
   const vis = VIEW_MODES[view] && VIEW_MODES[view].visible;
   if (!vis) return;
-  // 'highlighted' renders the same as 'visible' until per-type highlighting is implemented.
   VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
 }
 
@@ -1925,6 +2107,7 @@ function renderDebugPanel() {
 
   modeBtnsEl.innerHTML = '';
   Object.entries(VIEW_MODES).forEach(([key, v]) => {
+    if (v.readonly) return;
     const btn = document.createElement('button');
     btn.className = 'dbg-mode-btn' + (debugActiveView === key ? ' active' : '');
     btn.textContent = v.display;
@@ -1943,7 +2126,15 @@ function renderDebugPanel() {
 
   const vis = (VIEW_MODES[debugActiveView] && VIEW_MODES[debugActiveView].visible) || {};
   let html = '';
+  let lastLayer = null;
+  const layerLabel = { physical: 'Physical', virtual: 'Virtual' };
   VISUAL_TYPES.forEach(type => {
+    if (type.layer !== lastLayer) {
+      lastLayer = type.layer;
+      html += '<tr><td colspan="2" style="padding:8px 8px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:' +
+        (type.layer === 'physical' ? '#6ab0f5' : '#a78bfa') + ';border-top:1px solid #1c1c1c">' +
+        (layerLabel[type.layer] || type.layer) + '</td></tr>';
+    }
     const instances = type.getInstances();
     const state = vis[type.key] || 'visible'; // 'visible' | 'hidden' | 'highlighted'
     const isVisibleish = (state !== 'hidden');
@@ -2233,6 +2424,60 @@ function setLevelStatus(msg) {
 }
 document.getElementById('btn-save-level').addEventListener('click', downloadLevel);
 document.getElementById('btn-load-level').addEventListener('click', uploadLevel);
+
+// ===== META-CONTROLS =====
+const DEFAULT_SAVE_KEY = 'uxproto_default_level';
+let metaOpen = true;
+
+function toggleMetaControls() {
+  metaOpen = !metaOpen;
+  const body = document.getElementById('meta-controls-body');
+  const hdr  = document.getElementById('meta-controls-header');
+  const btn  = document.getElementById('meta-controls-toggle');
+  body.hidden = !metaOpen;
+  hdr.classList.toggle('collapsed', !metaOpen);
+  btn.textContent = metaOpen ? '−' : '+';
+}
+document.getElementById('meta-controls-toggle').addEventListener('click', toggleMetaControls);
+
+function setMetaStatus(msg, ok) {
+  const el = document.getElementById('meta-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? '#2ecc71' : '#e67e22';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.textContent = ''; el.style.color = ''; }, 3000);
+}
+
+function saveDefault() {
+  try {
+    localStorage.setItem(DEFAULT_SAVE_KEY, JSON.stringify(serializeLevel()));
+    setMetaStatus('Saved.', true);
+  } catch (e) {
+    setMetaStatus('Save failed.', false);
+  }
+}
+
+function loadDefault() {
+  const raw = localStorage.getItem(DEFAULT_SAVE_KEY);
+  if (!raw) { setMetaStatus('No saved default.', false); return; }
+  try {
+    loadLevelData(JSON.parse(raw));
+    setMetaStatus('Loaded.', true);
+  } catch (e) {
+    setMetaStatus('Load failed: ' + e.message, false);
+  }
+}
+
+document.getElementById('btn-save-default').addEventListener('click', saveDefault);
+document.getElementById('btn-load-default').addEventListener('click', loadDefault);
+
+let gpOpen = false;
+function toggleGpPanel() {
+  gpOpen = !gpOpen;
+  document.getElementById('gp-panel').classList.toggle('open', gpOpen);
+  document.getElementById('gp-toggle').style.left = gpOpen ? '280px' : '0';
+}
 
 function toggleDebugPanel() {
   debugOpen = !debugOpen;
