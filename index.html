@@ -1154,11 +1154,11 @@ function draftPathData(fromX, fromY, fromDir, toX, toY, stub = 18, radius = 14) 
 // Route convenience wrappers — resolve endpoints + directions in one place.
 function routePathData(route) {
   const ep = routeEndpoints(route); if (!ep) return '';
-  return `M ${ep.from.x} ${ep.from.y} L ${ep.to.x} ${ep.to.y}`;
+  return orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
 }
 function routeWaypoints(route) {
   const ep = routeEndpoints(route); if (!ep) return [];
-  return [ep.from, ep.to];
+  return orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
 }
 
 // ===== ORTHOGONAL PATH (single-bend L with rounded corner) =====
