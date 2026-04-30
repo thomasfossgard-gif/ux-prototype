@@ -226,7 +226,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.1#8';
+const APP_VERSION = '0.1.1#9';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -383,6 +383,13 @@ stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer);
 const versionEl = document.getElementById('version-label');
 versionEl.textContent = 'v' + APP_VERSION;
 
+const reloadBtn = document.getElementById('reload-btn');
+function flagUpdateAvailable() {
+  reloadBtn.style.color = 'rgba(255,200,80,0.9)';
+  reloadBtn.title = 'Update available — click to reload';
+}
+
+// On deployed Pages: compare APP_VERSION string from fetched HTML.
 async function checkLatestVersion() {
   try {
     const res = await fetch(location.href + '?_v=' + Date.now());
@@ -391,15 +398,29 @@ async function checkLatestVersion() {
     if (!match) return;
     const latest = match[1];
     if (latest !== APP_VERSION) {
-      versionEl.textContent = 'v' + APP_VERSION + ' — v' + latest + ' available ↻';
+      versionEl.textContent = 'v' + APP_VERSION + ' — v' + latest + ' available';
       versionEl.style.color = 'rgba(255,200,80,0.7)';
-      versionEl.style.cursor = 'pointer';
-      versionEl.onclick = () => location.reload();
+      flagUpdateAvailable();
     }
   } catch (_) {}
 }
+
+// On local server: poll HEAD for ETag/Last-Modified changes (no full download).
+let initialFileStamp = null;
+async function checkFileChanged() {
+  try {
+    const res = await fetch(location.href + '?_v=' + Date.now(), { method: 'HEAD' });
+    const stamp = res.headers.get('etag') || res.headers.get('last-modified');
+    if (!stamp) return; // server doesn't support — skip
+    if (initialFileStamp === null) { initialFileStamp = stamp; return; }
+    if (stamp !== initialFileStamp) flagUpdateAvailable();
+  } catch (_) {}
+}
+
 checkLatestVersion();
 setInterval(checkLatestVersion, 60_000);
+checkFileChanged();
+setInterval(checkFileChanged, 3_000);
 
 // Konva's getPointerPosition returns SCREEN-relative coords (within the stage container),
 // not world coords. With pan/zoom on, anything that compares against world-space data
