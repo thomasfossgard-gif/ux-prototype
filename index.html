@@ -145,7 +145,6 @@
     </div>
     <div id="palette-actions" class="palette-pane" hidden>
       <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
-      <button class="tool-btn" data-tool="line" title="Draw a new Route between two piles">Draw<br>New<br>Route</button>
       <button class="tool-btn" data-tool="addItem" title="Click an object to add a triangle">+ &#9650;</button>
       <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
     </div>
@@ -227,7 +226,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.1#7';
+const APP_VERSION = '0.1.1#8';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
