@@ -183,6 +183,24 @@
   .options-table input[type=checkbox] { cursor: pointer; width: 14px; height: 14px; accent-color: #4a90e2; }
   .meta-btn.active { background: #4a90e2; border-color: #5a9ef0; color: #fff; }
   .meta-btn.active:hover { background: #5a9ef0; }
+  /* ===== PLAYBACK PANEL ===== */
+  #playback-panel {
+    position: fixed; bottom: 16px; right: calc(75% + 8px);
+    background: #232730; border: 1px solid #333; border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 8px 12px; gap: 6px; z-index: 6;
+  }
+  #playback-btns { display: flex; gap: 6px; }
+  .pb-btn {
+    width: 36px; height: 36px; background: #2c313c; border: 1px solid #444;
+    color: #ccc; cursor: pointer; border-radius: 6px; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .pb-btn:hover:not(.active) { background: #3a4150; border-color: #666; color: #fff; }
+  .pb-btn.active { background: #4a90e2; border-color: #5a9ef0; color: #fff; }
+  #playback-hint { font-size: 10px; color: #555; letter-spacing: 0.3px; }
   /* ===== INSPECT PANEL ===== */
   #inspect-panel {
     position: fixed; background: #232730; border: 1px solid #555;
@@ -204,6 +222,13 @@
 </head>
 <body>
 <div id="app">
+  <div id="playback-panel">
+    <div id="playback-btns">
+      <button class="pb-btn active" id="pb-play" title="Play">&#9654;</button>
+      <button class="pb-btn" id="pb-pause" title="Pause">&#9646;&#9646;</button>
+    </div>
+    <div id="playback-hint">Spacebar</div>
+  </div>
   <div id="top-palette">
     <div id="tabs">
       <button class="tab" data-tab="actions">Actions</button>
@@ -332,7 +357,7 @@ const palette = {
     { id: 'oD', kind: 'object', shape: 'triangle', color: '#E879B9', label: 'Plastic' },
   ],
 };
-const APP_VERSION = '0.1.2#8';
+const APP_VERSION = '0.1.2#17';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -427,10 +452,9 @@ function popTransientMode() {
 // hovering a pile in the palette, dragging a pile out of the palette) can request
 // the Route View visual mode. View-only — does NOT change the game mode.
 let pileFocusDepth = 0;
-let anchorsVisible = true;
 function enterPileFocus() {
   pileFocusDepth++;
-  if (pileFocusDepth === 1) pushViewFocus(currentMode === 'drawRoutes' ? 'ViewRoutes' : 'ViewHoverReveal');
+  if (pileFocusDepth === 1) pushViewFocus(currentMode === 'drawRoutes' ? 'ViewRoutes' : 'ViewGhost');
 }
 function leavePileFocus() {
   if (pileFocusDepth === 0) return;
@@ -607,7 +631,6 @@ stage.on('wheel', e => {
 let panStart = null;
 stage.on('mousedown', e => {
   if (e.evt.button !== 0) return;
-  if (e.target === stage && radialMenu && !radialMenu.ghost) hideRadialMenu();
   if (e.target !== stage) return; // ignore if a shape was hit
   panStart = {
     cx: e.evt.clientX, cy: e.evt.clientY,
@@ -909,7 +932,6 @@ function setWorkerState(w, key, value) {
   applyWorkerState(w);
   workerLayer.batchDraw();
 }
-function setAllAnchorsVisible(_visible) { refreshAllPiles(); } // legacy shim — line-draft state now drives anchor visibility globally
 
 const PILE_DOT_PATTERN = (() => {
   const c = document.createElement('canvas');
@@ -937,12 +959,10 @@ function drawNode(node) {
   grp.on('mouseenter', () => {
     enterPileFocus();
     setPileState(node, 'hovered', true);
-    if (currentMode === 'gameInteract') showRadialMenu(node, true);
   });
   grp.on('mouseleave', () => {
     leavePileFocus();
     setPileState(node, 'hovered', false);
-    if (currentMode === 'gameInteract') hideRadialMenuIfGhost();
   });
   nodeLayer.add(grp);
   updateNodeStack(node);
@@ -1152,6 +1172,7 @@ function routePathData(route) {
   const ep = routeEndpoints(route); if (!ep) return '';
   return orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
 }
+
 function routeWaypoints(route) {
   const ep = routeEndpoints(route); if (!ep) return [];
   return orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
@@ -1277,7 +1298,7 @@ function onNodeMouseDown(e, node, grp) {
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
   } else if (currentMode === 'gameInteract') {
     e.cancelBubble = true;
-    showRadialMenu(node, false);
+    startLineDraft(node);
   }
 }
 function startNodeMove(node, grp) {
@@ -1365,7 +1386,6 @@ stage.on('mouseup', () => {
     }
   }
   cancelLineDraft();
-  hideRadialMenu();
   if (created) holdRouteView(created.id);
 });
 
@@ -1376,16 +1396,15 @@ function drawRoute(route) {
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const path = new Konva.Path({
     data: routePathData(route),
-    stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round', name: 'routepath'
+    stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
+    dash: [14, 8], dashOffset: 0, name: 'routepath'
   });
-  const endA = new Konva.Circle({ x: ep.from.x, y: ep.from.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
-  const endB = new Konva.Circle({ x: ep.to.x, y: ep.to.y, radius: 11, fill: route.color, stroke: '#fff', strokeWidth: 2, name: 'routeend' });
   const hitbox = new Konva.Path({
     data: routePathData(route),
     stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
     dash: [3, 3], listening: false, name: 'hitbox-route', visible: false
   });
-  grp.add(path, hitbox, endA, endB);
+  grp.add(path, hitbox);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
   edgeLayer.add(grp);
   edgeLayer.batchDraw();
@@ -1429,9 +1448,6 @@ function redrawRoutesTouching(nodeId) {
     grp.findOne('.routepath').data(routePathData(j));
     const rhb = grp.findOne('.hitbox-route');
     if (rhb) rhb.data(routePathData(j));
-    const ends = grp.find('.routeend');
-    ends[0].position({ x: ep.from.x, y: ep.from.y });
-    ends[1].position({ x: ep.to.x, y: ep.to.y });
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
       const wp = routeWaypoints(j);
@@ -1940,8 +1956,10 @@ function flashRouteCreated(route) {
   });
 }
 
-// ===== ANIMATION (worker shuttle) =====
+// ===== ANIMATION (worker shuttle + route dash) =====
 const SPEED_PX_PER_SEC = 90;
+const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
+let routeDashOffset = 0;
 const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
   let dirty = false;
@@ -2034,9 +2052,38 @@ const anim = new Konva.Animation(frame => {
     dirty = true;
   });
   tickFlashes();
-  return dirty || activeFlashes.length > 0;
+  if (routes.length > 0) {
+    routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
+    edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
+  }
+  return dirty || activeFlashes.length > 0 || routes.length > 0;
 }, [workerLayer, nodeLayer, edgeLayer, uiLayer]);
 anim.start();
+
+// ===== PLAYBACK =====
+let gamePaused = false;
+function setGamePaused(paused) {
+  gamePaused = paused;
+  if (paused) { anim.stop(); pushViewFocus('ViewGhost'); }
+  else        { anim.start(); popViewFocus(); }
+  document.getElementById('pb-play').classList.toggle('active', !paused);
+  document.getElementById('pb-pause').classList.toggle('active', paused);
+}
+document.getElementById('pb-play').addEventListener('click', () => setGamePaused(false));
+document.getElementById('pb-pause').addEventListener('click', () => setGamePaused(true));
+(() => {
+  const paletteEl = document.getElementById('top-palette');
+  const playbackEl = document.getElementById('playback-panel');
+  const sync = () => { playbackEl.style.height = paletteEl.offsetHeight + 'px'; };
+  new ResizeObserver(sync).observe(paletteEl);
+  sync();
+})();
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target === document.body) {
+    e.preventDefault();
+    setGamePaused(!gamePaused);
+  }
+});
 
 // ===== DEBUG PANEL =====
 const VISUAL_TYPES = [
@@ -2069,19 +2116,9 @@ const VISUAL_TYPES = [
     apply: vis => { nodeLayer.find('.stack').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
   },
   {
-    key: 'anchors', label: 'Anchors', layer: 'virtual',
-    getInstances: () => nodes.map(n => ({ id: n.id + '_anc', label: 'Pile ' + n.id })),
-    apply: vis => { anchorsVisible = vis; refreshAllPiles(); }
-  },
-  {
     key: 'routes', label: 'Routes', layer: 'virtual',
     getInstances: () => routes.map(r => ({ id: r.id, label: r.fromId + ' → ' + r.toId })),
     apply: vis => { edgeLayer.find('.routepath').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
-  },
-  {
-    key: 'routeEnds', label: 'Route Ends', layer: 'virtual',
-    getInstances: () => routes.map(r => ({ id: r.id + '_ends', label: 'Route ' + r.id })),
-    apply: vis => { edgeLayer.find('.routeend').forEach(el => el.visible(vis)); edgeLayer.batchDraw(); }
   },
   {
     key: 'routeSlots', label: 'Route Slots', layer: 'virtual',
@@ -2183,11 +2220,11 @@ function applyHitboxVisibility() {
 let debugPreviewing = false; // true while the panel is overriding the live view
 function buildRevealGhosts() {
   revealLayer.destroyChildren();
+  nodeLayer.find('.node').forEach(grp => {
+    revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
+  });
   edgeLayer.find('.routepath').forEach(el => {
     revealLayer.add(new Konva.Path({ data: el.data(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: el.strokeWidth(), lineCap: 'round', lineJoin: 'round', listening: false }));
-  });
-  edgeLayer.find('.routeend').forEach(el => {
-    revealLayer.add(new Konva.Circle({ x: el.x(), y: el.y(), radius: el.radius(), fill: 'rgba(255,255,255,0.25)', listening: false }));
   });
   uiLayer.find('.slot').forEach(grp => {
     const rect = grp.findOne('Rect'); if (!rect) return;
@@ -2235,7 +2272,7 @@ function applyDebugVisibility() {
   }
   const view = debugPreviewing ? debugActiveView : effectiveView;
   if (view === 'ViewHoverReveal') {
-    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical' || t.key === 'anchors'));
+    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical'));
     buildRevealGhosts();
     return;
   }
@@ -2444,11 +2481,6 @@ function toggleDebugVis(typeKey) {
 })();
 
 const LOCAL_VIS_RULES = [
-  {
-    name: 'Anchors',
-    driver: 'Pile hover / line draft',
-    note: 'Shown on each pile when hovered or while a route is being drawn. Controlled by anchorsVisible + applyPileState().',
-  },
   {
     name: 'Worker ghost',
     driver: 'Lifting state',
@@ -2680,138 +2712,6 @@ function setLevelStatus(msg) {
 }
 document.getElementById('btn-save-level').addEventListener('click', downloadLevel);
 document.getElementById('btn-load-level').addEventListener('click', uploadLevel);
-
-// ===== RADIAL MENU =====
-let radialMenu = null; // { nodeId, grp, ghost }
-
-const RM_INNER_R = 38;
-const RM_OUTER_R = 68;
-const RM_MID_R   = (RM_INNER_R + RM_OUTER_R) / 2;
-const RM_SLOTS   = 8;
-
-function rmSlotPos(i) {
-  const angle = (i / RM_SLOTS) * Math.PI * 2 - Math.PI / 2;
-  return { x: Math.cos(angle) * RM_MID_R, y: Math.sin(angle) * RM_MID_R };
-}
-
-function bounceScale(grp) {
-  grp.scale({ x: 0, y: 0 });
-  new Konva.Tween({ node: grp, duration: 0.13, scaleX: 1.18, scaleY: 1.18,
-    easing: Konva.Easings.EaseOut, onFinish: () => {
-    new Konva.Tween({ node: grp, duration: 0.09, scaleX: 0.93, scaleY: 0.93,
-      easing: Konva.Easings.Linear, onFinish: () => {
-      new Konva.Tween({ node: grp, duration: 0.07, scaleX: 1, scaleY: 1,
-        easing: Konva.Easings.EaseOut,
-      }).play();
-    }}).play();
-  }}).play();
-}
-
-function showRmSlider(menuGrp, slotPos) {
-  menuGrp.findOne('.rm-slider')?.destroy();
-
-  const TRACK_H = 72;
-  const sg = new Konva.Group({ x: slotPos.x + 20, y: slotPos.y - TRACK_H / 2, name: 'rm-slider' });
-
-  sg.add(new Konva.Line({
-    points: [0, 0, 0, TRACK_H], stroke: 'rgba(255,255,255,0.3)', strokeWidth: 2, listening: false,
-  }));
-  sg.add(new Konva.Text({ x: 5, y: -2,          text: '∞', fill: '#fff', fontSize: 12, listening: false }));
-  sg.add(new Konva.Text({ x: 5, y: TRACK_H - 8, text: '0', fill: '#888', fontSize: 10, listening: false }));
-
-  const valLbl = new Konva.Text({
-    x: -36, y: -6, text: '∞', fill: '#fff', fontSize: 12, fontStyle: 'bold',
-    width: 30, align: 'right', listening: false,
-  });
-  sg.add(valLbl);
-
-  const handle = new Konva.Circle({ x: 0, y: 0, radius: 7, fill: '#fff', draggable: true });
-  handle.on('dragmove', () => {
-    handle.x(0);
-    const y = Math.max(0, Math.min(TRACK_H, handle.y()));
-    handle.y(y);
-    const t = y / TRACK_H;
-    valLbl.y(y - 6);
-    valLbl.text(t < 0.05 ? '∞' : Math.round((1 - t) * 40).toString());
-    uiLayer.batchDraw();
-  });
-  sg.add(handle);
-
-  menuGrp.add(sg);
-  uiLayer.batchDraw();
-}
-
-function buildRmGroup(node, ghost) {
-  const grp = new Konva.Group({ x: node.x, y: node.y, listening: !ghost });
-
-  grp.add(new Konva.Ring({
-    innerRadius: RM_INNER_R, outerRadius: RM_OUTER_R,
-    fill: ghost ? 'rgba(55,60,75,0.30)' : 'rgba(55,60,75,0.82)',
-    listening: false,
-  }));
-
-  for (let i = 0; i < RM_SLOTS; i++) {
-    const p = rmSlotPos(i);
-    grp.add(new Konva.Circle({
-      x: p.x, y: p.y, radius: 10,
-      fill: ghost ? 'rgba(35,40,52,0.35)' : 'rgba(35,40,52,0.90)',
-      listening: false,
-    }));
-  }
-
-  // Worker-type icons in the first N slots
-  palette.workers.slice(0, RM_SLOTS).forEach((w, i) => {
-    const p = rmSlotPos(i);
-    const icon = new Konva.RegularPolygon({
-      x: p.x, y: p.y, sides: 3, radius: 8,
-      fill:   ghost ? 'rgba(160,160,160,0.25)' : w.color,
-      stroke: ghost ? 'transparent'            : 'rgba(255,255,255,0.35)',
-      strokeWidth: 1, listening: !ghost, name: 'rm-icon',
-    });
-    if (!ghost) {
-      icon.on('mouseenter', () => { icon.radius(10); uiLayer.batchDraw(); });
-      icon.on('mouseleave', () => { icon.radius(8);  uiLayer.batchDraw(); });
-      icon.on('mousedown',  e  => { e.cancelBubble = true; showRmSlider(grp, p); });
-    }
-    grp.add(icon);
-  });
-
-  // Centre circle — drag from here to draw a route
-  const centre = new Konva.Circle({
-    radius: 10,
-    fill:   ghost ? 'rgba(255,255,255,0.12)' : '#ffffff',
-    stroke: ghost ? 'transparent'            : 'rgba(0,0,0,0.25)',
-    strokeWidth: 1.5, listening: !ghost, name: 'rm-centre',
-  });
-  if (!ghost) {
-    centre.on('mouseenter', () => { containerEl.style.cursor = 'crosshair'; });
-    centre.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
-    centre.on('mousedown',  e  => { e.cancelBubble = true; startLineDraft(node, null); });
-  }
-  grp.add(centre);
-  return grp;
-}
-
-function showRadialMenu(node, ghost) {
-  if (radialMenu && !radialMenu.ghost && ghost) return; // don't downgrade active → ghost
-  hideRadialMenu();
-  const grp = buildRmGroup(node, ghost);
-  uiLayer.add(grp);
-  radialMenu = { nodeId: node.id, grp, ghost };
-  if (!ghost) bounceScale(grp);
-  uiLayer.batchDraw();
-}
-
-function hideRadialMenu() {
-  if (!radialMenu) return;
-  radialMenu.grp.destroy();
-  radialMenu = null;
-  uiLayer.batchDraw();
-}
-
-function hideRadialMenuIfGhost() {
-  if (radialMenu?.ghost) hideRadialMenu();
-}
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
