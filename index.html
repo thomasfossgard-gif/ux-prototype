@@ -201,6 +201,18 @@
   .pb-btn:hover:not(.active) { background: #3a4150; border-color: #666; color: #fff; }
   .pb-btn.active { background: #4a90e2; border-color: #5a9ef0; color: #fff; }
   #playback-hint { font-size: 10px; color: #555; letter-spacing: 0.3px; }
+  /* ===== SLOT POPUP ===== */
+  #slot-popup {
+    position: fixed; background: #232730; border: 1px solid #555;
+    border-radius: 8px; padding: 10px 12px; z-index: 50;
+    font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-width: 140px;
+  }
+  #slot-popup h4 { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
+  .slot-popup-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; }
+  .slot-popup-row:last-child { margin-bottom: 0; }
+  .slot-popup-dot { width: 10px; height: 10px; flex-shrink: 0; clip-path: polygon(50% 4%,4% 96%,96% 96%); }
+  .slot-popup-label { flex: 1; color: #ccc; }
+  .slot-popup-row input[type=checkbox] { cursor: pointer; accent-color: #4a90e2; width: 14px; height: 14px; }
   /* ===== INSPECT PANEL ===== */
   #inspect-panel {
     position: fixed; background: #232730; border: 1px solid #555;
@@ -218,9 +230,12 @@
   #inspect-panel .close-btn { position: absolute; top: 6px; right: 8px; background: none; border: none; color: #666; cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
   #inspect-panel .close-btn:hover { color: #fff; }
   #inspect-panel .inspect-divider { border: none; border-top: 1px solid #2a2d35; margin: 8px 0; }
+  #debug-overlay { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 4px; pointer-events: none; max-width: 600px; width: max-content; }
+  .debug-error { background: #c0392b; color: #fff; font-size: 11px; font-family: monospace; padding: 5px 10px; border-radius: 5px; white-space: pre-wrap; word-break: break-all; opacity: 0.95; }
 </style>
 </head>
 <body>
+<div id="debug-overlay"></div>
 <div id="app">
   <div id="playback-panel">
     <div id="playback-btns">
@@ -236,7 +251,6 @@
     </div>
     <div id="palette-actions" class="palette-pane" hidden>
       <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
-      <button class="tool-btn" data-tool="addItem" title="Click an object to add a triangle">+ &#9650;</button>
       <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
     </div>
     <div id="palette-items" class="palette-pane"></div>
@@ -270,7 +284,6 @@
     <div class="hint" id="hint">
       Drag a pile from the top palette into this area.<br>
       Use <b>Draw Route</b> to drag a line between two piles.<br>
-      Use <b>+&#9650;</b> to click a pile and add a triangle.<br>
       Click a worker (portrait or in level) to select it. Drag a worker to lift &amp; assign to a Route.
     </div>
   </div>
@@ -329,6 +342,7 @@
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
 <button id="debug-toggle" onclick="toggleDebugPanel()">DEBUG</button>
+<div id="slot-popup" hidden></div>
 <div id="inspect-panel" hidden>
   <button class="close-btn" onclick="closeInspectPanel()">&times;</button>
   <h4 id="inspect-title">Inspect</h4>
@@ -344,6 +358,13 @@
 <script>
 // ===== STATE =====
 const GRID = 40;
+const SCRAP_TYPES = [
+  { id: 'wood',    label: 'Wood',    color: '#A0522D' },
+  { id: 'steel',   label: 'Steel',   color: '#FFFFFF' },
+  { id: 'plastic', label: 'Plastic', color: '#E879B9' },
+];
+const defaultAllowedTypes = () => Object.fromEntries(SCRAP_TYPES.map(t => [t.id, true]));
+
 const palette = {
   workers: [
     { id: 'wA', kind: 'worker', color: '#e74c3c', capacity: 1, name: 'greg'  },
@@ -352,12 +373,9 @@ const palette = {
   ],
   objects: [
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
-    { id: 'oB', kind: 'object', shape: 'triangle', color: '#A0522D', label: 'Wood'    },
-    { id: 'oC', kind: 'object', shape: 'triangle', color: '#9E9E9E', label: 'Steel'   },
-    { id: 'oD', kind: 'object', shape: 'triangle', color: '#E879B9', label: 'Plastic' },
   ],
 };
-const APP_VERSION = '0.1.2#17';
+const APP_VERSION = '0.1.2#26';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -365,7 +383,7 @@ const consumeRouteColor = () => { const c = peekRouteColor(); routeColorIdx++; r
 
 let nodes = [];   // { id, templateId, x, y, color, items }
 let routes = [];  // { id, fromId, toId, color, workerId }
-let workers = []; // { id, templateId, color, capacity, x, y, routeId, carrying, segIdx, segT, dir }
+let workers = []; // { id, templateId, color, capacity, x, y, routeId, inventory, noScrap, segIdx, segT, dir }
 let activeTab = 'objects';
 let selectedWorkerId = null;
 
@@ -391,12 +409,11 @@ const COG_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="ht
 const MODES = {
   gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default',     view: 'ViewDefault' },
   drawRoutes:   { display: 'Draw Routes',   tool: 'line',    cursor: 'crosshair',   view: 'ViewRoutes' },
-  addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy',        view: 'ViewDefault' },
   deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed', view: 'ViewDefault' },
   liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewRoutes' },
   inspectMode:  { display: 'Inspect',       tool: 'inspect', cursor: COG_CURSOR,    view: 'ViewDefault' },
 };
-const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode', inspect: 'inspectMode' };
+const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', delete: 'deleteMode', inspect: 'inspectMode' };
 let currentMode = 'gameInteract';
 let prevMode = null; // saved game mode while a transient game mode (liftWorker) is active
 const viewFocusStack = []; // ordered list of pushed view-mode names; topmost wins
@@ -487,7 +504,7 @@ function applyMode() {
   // Pile highlight: subtle outline glow when targetable for the current mode.
   nodeLayer.find('.nodeshape').forEach(s => {
     let glow = 0;
-    if (currentMode === 'drawRoutes' || currentMode === 'addItems') glow = 6;
+    if (currentMode === 'drawRoutes') glow = 6;
     else if (currentMode === 'deleteMode') glow = 8;
     s.shadowBlur(glow);
     s.shadowColor(currentMode === 'deleteMode' ? '#ff3b3b' : '#ffffff');
@@ -975,7 +992,7 @@ function updateNodeStack(node) {
   stack.destroyChildren();
   const entries = Object.entries(node.scrap || {}).filter(([, c]) => c > 0);
   entries.forEach(([typeId, count], i) => {
-    const tpl = palette.objects.find(o => o.id === typeId);
+    const tpl = SCRAP_TYPES.find(t => t.id === typeId);
     const color = tpl?.color ?? '#f1c40f';
     const y = -32 - i * 18;
     stack.add(new Konva.RegularPolygon({
@@ -995,7 +1012,8 @@ function updateNodeStack(node) {
 function placeWorker(tpl, x, y) {
   const w = {
     id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
-    x: x, y: y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1,
+    x: x, y: y, routeId: null, inventory: {}, noScrap: false,
+    segIdx: 0, segT: 0, dir: 1,
     targetX: null, targetY: null,
     states: { selected: false, lifting: false },
   };
@@ -1019,14 +1037,23 @@ function drawWorker(w) {
     stroke: 'rgba(255,255,255,0.35)', strokeWidth: 1.5, name: 'workercircle',
   });
   const hitbox = new Konva.Rect({ x: -S, y: -S, width: S*2, height: S*2, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
-  // small carry indicator
-  const carry = new Konva.RegularPolygon({ sides: 3, radius: 5, fill: '#f1c40f', stroke: '#fff', strokeWidth: 1, y: 0, name: 'carry', visible: false });
+  // carry indicator: one fixed triangle slot per scrap type, shown above head
+  const carry = new Konva.Group({ y: -S - 10, name: 'carry' });
+  SCRAP_TYPES.forEach((t, i) => {
+    const offsetX = (i - (SCRAP_TYPES.length - 1) / 2) * 13;
+    carry.add(new Konva.RegularPolygon({
+      x: offsetX, y: 0, sides: 3, radius: 6,
+      fill: t.color, stroke: 'rgba(255,255,255,0.7)', strokeWidth: 1,
+      listening: false, visible: false, name: 'carry-' + t.id,
+    }));
+  });
   if (displayName) {
     const label = new Konva.Text({ text: displayName, fontSize: 10, fontFamily: 'system-ui, sans-serif', fill: 'rgba(255,255,255,0.75)', y: S + 3, listening: false, name: 'workerlabel' });
     label.x(-label.width() / 2);
     grp.add(label);
   }
   grp.add(c, hitbox, carry);
+  carry.moveToTop();
   grp.on('mousedown', e => onWorkerMouseDown(e, w, grp));
   grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; w.states.hovered = true; workerSay(w, 'hm?'); enterWorkerHover(); });
   grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; w.states.hovered = false; exitWorkerHover(); });
@@ -1092,9 +1119,11 @@ function updateWorkerVisual(w) {
   const grp = workerLayer.findOne('#' + w.id);
   if (!grp) return;
   grp.position({ x: w.x, y: w.y });
-  const carry = grp.findOne('.carry');
-  if (w.carrying > 0) { carry.visible(true); carry.fill('#f1c40f'); }
-  else carry.visible(false);
+  const inv = w.inventory || {};
+  SCRAP_TYPES.forEach(t => {
+    const slot = grp.findOne('.carry-' + t.id);
+    if (slot) slot.visible((inv[t.id] || 0) > 0);
+  });
 }
 
 // ===== ANCHOR DIRECTIONS =====
@@ -1270,7 +1299,6 @@ function showWorkerInGpPanel(w) {
     gpPanelTable([
       ['ID',       w.id],
       ['Capacity', w.capacity],
-      ['Carrying', w.carrying],
       ['Route',    route ? `${route.fromId} → ${route.toId}` : '—'],
       ['Position', `${Math.round(w.x)}, ${Math.round(w.y)}`],
     ]);
@@ -1289,10 +1317,6 @@ function onNodeMouseDown(e, node, grp) {
   } else if (currentMode === 'drawRoutes') {
     // Routes now start exclusively from anchor circles. Body clicks are no-ops in this mode.
     return;
-  } else if (currentMode === 'addItems') {
-    e.cancelBubble = true;
-    node.items++;
-    updateNodeStack(node);
   } else if (currentMode === 'deleteMode') {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
@@ -1377,6 +1401,7 @@ stage.on('mouseup', () => {
         id: uid(),
         fromId: lineDraft.fromNode.id, toId: hitNode.id,
         color: consumeRouteColor(), workerId: null,
+        allowedTypes: defaultAllowedTypes(),
         states: { recentlyCreated: true },
       };
       routes.push(route);
@@ -1388,6 +1413,29 @@ stage.on('mouseup', () => {
   cancelLineDraft();
   if (created) holdRouteView(created.id);
 });
+
+// ===== ROUTE HOVER (shared by route path and slot) =====
+function showRouteHover(route) {
+  const routeGrp = edgeLayer.findOne('#' + route.id);
+  const slotGrp  = uiLayer.findOne('#slot_' + route.id);
+  let dirty = false;
+  if (routeGrp) {
+    const rp = routeGrp.findOne('.routepath');
+    if (!rp.visible()) { rp.stroke('rgba(255,255,255,0.55)'); rp.visible(true); dirty = true; }
+  }
+  if (slotGrp && !route.workerId) {
+    const rect = slotGrp.findOne('Rect');
+    if (!rect.visible()) { rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true); dirty = true; }
+  }
+  if (dirty) { edgeLayer.batchDraw(); uiLayer.batchDraw(); }
+}
+function hideRouteHover(route) {
+  const routeGrp = edgeLayer.findOne('#' + route.id);
+  const slotGrp  = uiLayer.findOne('#slot_' + route.id);
+  if (routeGrp) routeGrp.findOne('.routepath').stroke(route.color);
+  if (slotGrp)  slotGrp.findOne('Rect')?.stroke(route.color);
+  applyDebugVisibility();
+}
 
 // ===== ROUTE RENDER =====
 function drawRoute(route) {
@@ -1404,8 +1452,16 @@ function drawRoute(route) {
     stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
     dash: [3, 3], listening: false, name: 'hitbox-route', visible: false
   });
-  grp.add(path, hitbox);
+  // Wide, nearly-invisible path so route is hoverable even when routepath is hidden.
+  const hoverHit = new Konva.Path({
+    data: routePathData(route),
+    stroke: route.color, strokeWidth: 28, lineCap: 'round',
+    opacity: 0.001, name: 'hover-hit-route',
+  });
+  grp.add(path, hitbox, hoverHit);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
+  grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); showRouteHover(route); });
+  grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => hideRouteHover(route), 0); });
   edgeLayer.add(grp);
   edgeLayer.batchDraw();
   drawSlotForRoute(route);
@@ -1417,19 +1473,30 @@ function drawSlotForRoute(route) {
   const mid = pointAtFraction(wp, 0.5);
   const grp = new Konva.Group({
     id: 'slot_' + route.id, name: 'slot',
-    x: mid.x, y: mid.y, visible: false,
+    x: mid.x, y: mid.y,
   });
   const slot = new Konva.Rect({
-    x: -15, y: -15, width: 30, height: 30, cornerRadius: 5,
-    stroke: route.color, strokeWidth: 2, dash: [4, 3],
-    fill: 'rgba(255,255,255,0.06)',
+    x: -18, y: -18, width: 36, height: 36, cornerRadius: 6,
+    stroke: route.color, strokeWidth: 2, dash: [14, 8],
+    fill: 'rgba(255,255,255,0.06)', visible: false, name: 'slot-rect',
   });
   const hitbox = new Konva.Circle({
     radius: 26, fillPatternImage: STRIPE_PATTERN, listening: false,
     name: 'hitbox-slot', visible: false,
   });
-  grp.add(slot, hitbox);
+  // Wide nearly-invisible hit area so slot is hoverable even when rect is hidden.
+  const hoverHit = new Konva.Circle({
+    radius: 28, fill: route.color, opacity: 0.001, name: 'hover-hit-slot',
+  });
+  grp.add(slot, hitbox, hoverHit);
   grp.routeRef = route;
+  grp.on('mousedown', e => {
+    if (currentMode !== 'gameInteract') return;
+    e.cancelBubble = true;
+    openSlotPopup(route, e.evt.clientX, e.evt.clientY);
+  });
+  grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); showRouteHover(route); });
+  grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => hideRouteHover(route), 0); });
   uiLayer.add(grp);
   // Continuous "Look at me" pulse on the slot body — sine 0→0.5→0 over 2s.
   // The pulse runs always; when the slot is hidden by view-mode visibility
@@ -1448,6 +1515,8 @@ function redrawRoutesTouching(nodeId) {
     grp.findOne('.routepath').data(routePathData(j));
     const rhb = grp.findOne('.hitbox-route');
     if (rhb) rhb.data(routePathData(j));
+    const hhit = grp.findOne('.hover-hit-route');
+    if (hhit) hhit.data(routePathData(j));
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
       const wp = routeWaypoints(j);
@@ -1531,7 +1600,7 @@ function onWorkerMouseDown(e, w, grp) {
     const p = getWorldPointer();
     let chosen = null;
     if (p) {
-      const visibleSlots = uiLayer.find('.slot').filter(s => s.visible());
+      const visibleSlots = uiLayer.find('.slot').filter(s => s.findOne('Rect')?.visible());
       for (const s of visibleSlots) {
         const dx = s.x() - p.x, dy = s.y() - p.y;
         if (dx*dx + dy*dy <= 26*26) { chosen = s.routeRef; break; }
@@ -1546,7 +1615,7 @@ function onWorkerMouseDown(e, w, grp) {
       const mid = pointAtFraction(wp, 0.5);
       chosen.workerId = w.id;
       w.routeId = chosen.id;
-      w.carrying = 0;
+      w.inventory = {}; w.noScrap = false;
       w.targetX = mid.x; w.targetY = mid.y;
       showGhost(w, mid.x, mid.y);
       workerSay(w, 'Back to work!');
@@ -1621,7 +1690,7 @@ function spawnInitialWorkers() {
     const pos = positions[i] || {x:160 + i*60, y:160};
     const w = {
       id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
-      x: pos.x, y: pos.y, routeId: null, carrying: 0, segIdx: 0, segT: 0, dir: 1,
+      x: pos.x, y: pos.y, routeId: null, inventory: {}, noScrap: false, segIdx: 0, segT: 0, dir: 1,
       targetX: null, targetY: null,
       states: { selected: false, lifting: false },
     };
@@ -1748,13 +1817,12 @@ function openInspectPanel(type, entity, clientX, clientY) {
     idEl.textContent  = 'ID: ' + entity.id + '  ·  pos ' + entity.x + ', ' + entity.y;
 
     if (isPile) {
-      const scrapTypes = palette.objects.filter(o => o.shape === 'triangle');
-      if (scrapTypes.length) {
+      if (SCRAP_TYPES.length) {
         const hdr = document.createElement('div');
         hdr.style.cssText = 'font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700';
         hdr.textContent = 'Scrap contents';
         body.appendChild(hdr);
-        scrapTypes.forEach(tpl => addInspectScrapRow(body, tpl, entity));
+        SCRAP_TYPES.forEach(tpl => addInspectScrapRow(body, tpl, entity));
         const div = document.createElement('hr');
         div.className = 'inspect-divider';
         body.appendChild(div);
@@ -1781,10 +1849,7 @@ function openInspectPanel(type, entity, clientX, clientY) {
       entity.capacity = v;
       renderPortraits();
     });
-    addInspectRow(body, 'Carrying', 'number', entity.carrying, 0, 99, v => {
-      entity.carrying = v;
-      updateWorkerVisual(entity);
-    });
+
 
   } else if (type === 'route') {
     title.textContent = 'Route';
@@ -1877,6 +1942,38 @@ function addInspectScrapRow(container, scrapTpl, pileNode) {
   container.appendChild(row);
 }
 
+function openSlotPopup(route, clientX, clientY) {
+  const popup = document.getElementById('slot-popup');
+  popup.innerHTML = '<h4>Carry filter</h4>';
+  SCRAP_TYPES.forEach(t => {
+    const row = document.createElement('label');
+    row.className = 'slot-popup-row';
+    const dot = document.createElement('div');
+    dot.className = 'slot-popup-dot';
+    dot.style.background = t.color;
+    const lbl = document.createElement('span');
+    lbl.className = 'slot-popup-label';
+    lbl.textContent = t.label;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = route.allowedTypes[t.id] !== false;
+    cb.onchange = () => { route.allowedTypes[t.id] = cb.checked; };
+    row.append(dot, lbl, cb);
+    popup.appendChild(row);
+  });
+  const M = 8, W = 160;
+  let px = clientX + M;
+  if (px + W > window.innerWidth) px = clientX - W - M;
+  popup.style.left = Math.max(M, px) + 'px';
+  popup.style.top  = Math.max(M, clientY + M) + 'px';
+  popup.hidden = false;
+  // close on next outside click
+  setTimeout(() => {
+    const close = e => { if (!popup.contains(e.target)) { popup.hidden = true; document.removeEventListener('mousedown', close); } };
+    document.addEventListener('mousedown', close);
+  }, 0);
+}
+
 function closeInspectPanel() {
   const panel = document.getElementById('inspect-panel');
   if (panel) panel.hidden = true;
@@ -1956,6 +2053,42 @@ function flashRouteCreated(route) {
   });
 }
 
+// ===== SCRAP ARC ANIMATION =====
+function animateScrapArc(fromX, fromY, toX, toY, typeId) {
+  const t = SCRAP_TYPES.find(s => s.id === typeId);
+  const shape = new Konva.RegularPolygon({
+    x: fromX, y: fromY, sides: 3, radius: 7,
+    fill: t?.color ?? '#fff', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1,
+    listening: false,
+  });
+  uiLayer.add(shape);
+  const duration = 0.38;
+  const arcH = Math.max(30, Math.hypot(toX - fromX, toY - fromY) * 0.45);
+  const start = performance.now();
+  (function tick() {
+    const p = Math.min(1, (performance.now() - start) / (duration * 1000));
+    shape.x(fromX + (toX - fromX) * p);
+    shape.y(fromY + (toY - fromY) * p - arcH * Math.sin(Math.PI * p));
+    shape.opacity(p < 0.85 ? 1 : 1 - (p - 0.85) / 0.15);
+    uiLayer.batchDraw();
+    if (p < 1) requestAnimationFrame(tick);
+    else shape.destroy();
+  })();
+}
+
+// ===== DEBUG OVERLAY =====
+const _debugSeen = new Set();
+function showDebugError(e) {
+  const msg = e?.stack || String(e);
+  if (_debugSeen.has(msg)) return;
+  _debugSeen.add(msg);
+  const el = document.createElement('div');
+  el.className = 'debug-error';
+  el.textContent = msg;
+  document.getElementById('debug-overlay').appendChild(el);
+  setTimeout(() => { el.remove(); _debugSeen.delete(msg); }, 8000);
+}
+
 // ===== ANIMATION (worker shuttle + route dash) =====
 const SPEED_PX_PER_SEC = 90;
 const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
@@ -1963,7 +2096,7 @@ let routeDashOffset = 0;
 const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
   let dirty = false;
-  workers.forEach(w => {
+  workers.forEach(w => { try {
     if (w.states?.hovered) return;
     // Walk to a commanded target (free-walk OR pre-shuttle approach to a route).
     if (w.targetX != null) {
@@ -2004,6 +2137,23 @@ const anim = new Konva.Animation(frame => {
     const ep = routeEndpoints(route);
     if (!ep) return;
     const fn = ep.fn, tn = ep.tn;
+
+    // noScrap: waiting at slot for scrap to appear at from-pile
+    if (w.noScrap) {
+      const allowed = route.allowedTypes || defaultAllowedTypes();
+      const pickType = SCRAP_TYPES.find(t => allowed[t.id] && (fn.scrap || {})[t.id] > 0);
+      if (pickType) {
+        w.noScrap = false;
+        // resume: start heading toward fn from slot midpoint
+        const wpAB = routeWaypoints(route);
+        const pathToFn = wpAB.slice().reverse();
+        const seg = fractionToSegment(pathToFn, 0.5);
+        w.dir = -1; w.segIdx = seg.segIdx; w.segT = seg.segT;
+      } else {
+        return; // still waiting
+      }
+    }
+
     const wpAB = routeWaypoints(route);
     const path = w.dir === 1 ? wpAB : wpAB.slice().reverse();
 
@@ -2022,27 +2172,42 @@ const anim = new Konva.Animation(frame => {
       }
     }
     if (w.segIdx >= path.length - 1) {
-      // arrived at end
-      const dest = w.dir === 1 ? tn : fn;
-      // drop carrying
-      if (w.carrying > 0) {
-        dest.items += w.carrying;
-        w.carrying = 0;
-        updateNodeStack(dest);
-      }
-      // pick up from this end
-      const pickup = Math.min(w.capacity, dest.items);
-      if (pickup > 0) {
-        dest.items -= pickup;
-        w.carrying = pickup;
-        updateNodeStack(dest);
-      }
-      // reverse direction; pin position to the path's last waypoint (the anchor),
-      // not the pile center — otherwise the worker visually flickers a few px on arrival.
-      w.dir *= -1;
-      w.segIdx = 0; w.segT = 0;
       const last = path[path.length - 1];
       w.x = last.x; w.y = last.y;
+      if (w.dir === 1) {
+        // Arrived at to-pile: drop inventory
+        const inv = w.inventory || {};
+        const hasItems = Object.values(inv).some(v => v > 0);
+        if (hasItems) {
+          if (!tn.scrap) tn.scrap = {};
+          Object.entries(inv).forEach(([type, count]) => {
+            animateScrapArc(w.x, w.y, tn.x, tn.y, type);
+            tn.scrap[type] = (tn.scrap[type] || 0) + count;
+          });
+          w.inventory = {};
+          refreshNodeItems(tn);
+          updateNodeStack(tn);
+        }
+        w.dir = -1; w.segIdx = 0; w.segT = 0;
+      } else {
+        // Arrived at from-pile: pick up 1 allowed scrap
+        const pickType = SCRAP_TYPES.find(t => (route.allowedTypes || defaultAllowedTypes())[t.id] && (fn.scrap || {})[t.id] > 0);
+        if (pickType) {
+          fn.scrap[pickType.id]--;
+          if (!w.inventory) w.inventory = {};
+          w.inventory[pickType.id] = (w.inventory[pickType.id] || 0) + 1;
+          refreshNodeItems(fn);
+          updateNodeStack(fn);
+          animateScrapArc(fn.x, fn.y, w.x, w.y, pickType.id);
+          w.dir = 1; w.segIdx = 0; w.segT = 0;
+        } else {
+          // No allowed scrap — go wait at slot
+          w.noScrap = true;
+          const mid = pointAtFraction(wpAB, 0.5);
+          w.targetX = mid.x; w.targetY = mid.y;
+          workerSay(w, 'No more scrap!');
+        }
+      }
     } else {
       const a = path[w.segIdx], b = path[w.segIdx + 1];
       w.x = a.x + (b.x - a.x) * w.segT;
@@ -2050,11 +2215,12 @@ const anim = new Konva.Animation(frame => {
     }
     updateWorkerVisual(w);
     dirty = true;
-  });
+  } catch(e) { showDebugError(e); } });
   tickFlashes();
   if (routes.length > 0) {
     routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
+    uiLayer.find('.slot-rect').forEach(r => r.dashOffset(routeDashOffset));
   }
   return dirty || activeFlashes.length > 0 || routes.length > 0;
 }, [workerLayer, nodeLayer, edgeLayer, uiLayer]);
@@ -2126,7 +2292,7 @@ const VISUAL_TYPES = [
     apply: vis => {
       uiLayer.find('.slot').forEach(s => {
         const occupied = s.routeRef && s.routeRef.workerId;
-        s.visible(vis && !occupied);
+        s.findOne('Rect')?.visible(vis && !occupied);
       });
       uiLayer.batchDraw();
     }
@@ -2233,6 +2399,7 @@ function buildRevealGhosts() {
   nodeLayer.find('.stack').forEach(stackGrp => {
     const nodeGrp = stackGrp.getParent();
     stackGrp.getChildren().forEach(el => {
+      if (el.getClassName() !== 'RegularPolygon') return; // skip Text count labels
       revealLayer.add(new Konva.RegularPolygon({
         x: nodeGrp.x() + el.x(), y: nodeGrp.y() + el.y(),
         sides: 3, radius: el.radius(),
@@ -2493,8 +2660,8 @@ const LOCAL_VIS_RULES = [
   },
   {
     name: 'Carry indicator',
-    driver: 'Carrying count',
-    note: 'Shown on a worker when it is carrying one or more items. Toggled by updateWorkerVisual() independently of view modes.',
+    driver: 'Worker inventory',
+    note: 'Per-type triangles shown above a worker when their inventory is non-empty. Toggled by updateWorkerVisual().',
   },
 ];
 
@@ -2572,11 +2739,11 @@ function serializeLevel() {
     })),
     routes: routes.map(r => ({
       id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId,
-      // fromAnchor/toAnchor intentionally omitted — routes are now pile-to-pile
+      allowedTypes: r.allowedTypes || defaultAllowedTypes(),
     })),
     workers: workers.map(w => ({
       id: w.id, templateId: w.templateId, color: w.color, capacity: w.capacity,
-      x: w.x, y: w.y, routeId: w.routeId, carrying: w.carrying,
+      x: w.x, y: w.y, routeId: w.routeId, inventory: w.inventory || {},
       segIdx: w.segIdx, segT: w.segT, dir: w.dir,
       targetX: w.targetX, targetY: w.targetY,
     })),
@@ -2637,6 +2804,7 @@ function loadLevelData(data) {
   (data.routes || []).forEach(r => {
     const route = {
       id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId || null,
+      allowedTypes: r.allowedTypes || defaultAllowedTypes(),
       states: { recentlyCreated: false },
     };
     routes.push(route);
@@ -2646,7 +2814,7 @@ function loadLevelData(data) {
   (data.workers || []).forEach(wd => {
     const w = {
       id: wd.id, templateId: wd.templateId, color: wd.color, capacity: wd.capacity,
-      x: wd.x, y: wd.y, routeId: wd.routeId || null, carrying: wd.carrying || 0,
+      x: wd.x, y: wd.y, routeId: wd.routeId || null, inventory: wd.inventory || {}, noScrap: false,
       segIdx: wd.segIdx || 0, segT: wd.segT || 0, dir: wd.dir || 1,
       targetX: wd.targetX != null ? wd.targetX : null,
       targetY: wd.targetY != null ? wd.targetY : null,
