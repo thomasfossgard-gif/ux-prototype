@@ -36,10 +36,10 @@
   #confirm-dialog { position: fixed; background: #232730; border: 1px solid #555; padding: 8px 10px; border-radius: 6px; z-index: 50; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
   #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
   #confirm-dialog button:hover { background: #4a90e2; }
-  .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
+  .hint { color: #bbb; font-size: 26px; pointer-events: none; white-space: nowrap; text-align: center; }
   #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(0,0,0,0.3); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
   #tick-indicator { position: absolute; left: -18px; top: 50%; margin-top: -5px; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 2px; pointer-events: none; }
-  #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: 12px; z-index: 10; }
+  #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 10; }
   #meta-controls { background: #232730; border: 1px solid #333; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; flex-shrink: 0; }
   #meta-controls-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #2a2d35; }
   #meta-controls-header.collapsed { border-bottom: none; }
@@ -56,13 +56,6 @@
   .meta-btn:hover { background: #3a4150; border-color: #666; color: #fff; }
   #meta-status { font-size: 10px; color: #555; min-height: 14px; }
   #mode-label { position: absolute; top: 80px; left: 16px; color: rgba(255,255,255,0.10); font-size: 56px; font-weight: 800; letter-spacing: 1px; pointer-events: none; line-height: 1; text-transform: uppercase; }
-  #worker-portraits { display: flex; gap: 10px; align-items: flex-start; }
-  .portrait-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
-  .portrait { width: 52px; height: 52px; border-radius: 10px; border: 3px solid rgba(255,255,255,0.25); position: relative; transition: all 0.12s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); background-size: cover; background-position: center center; overflow: hidden; }
-  .portrait-wrap:hover .portrait { border-color: rgba(255,255,255,0.6); }
-  .portrait-wrap.selected .portrait { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.4); }
-  .portrait .cap-badge { position: absolute; bottom: -4px; right: -4px; background: #232730; color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 8px; border: 1px solid #444; line-height: 1; z-index: 2; }
-  .portrait-name { color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center; letter-spacing: 0.4px; pointer-events: none; }
   /* ===== GAMEPLAY PROPERTIES PANEL ===== */
   #gp-panel {
     position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
@@ -248,7 +241,7 @@
   <div id="top-palette">
     <div id="tabs">
       <button class="tab" data-tab="actions">Actions</button>
-      <button class="tab active" data-tab="objects">Build</button>
+      <button class="tab active" data-tab="objects">Level Palette</button>
     </div>
     <div id="palette-actions" class="palette-pane" hidden>
       <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
@@ -259,7 +252,6 @@
   <div id="canvas-container">
     <div id="canvas"></div>
     <div id="top-center-bar">
-      <div id="worker-portraits"></div>
       <div id="meta-controls">
         <div id="meta-controls-header">
           <span>MetaControls</span>
@@ -270,23 +262,18 @@
             <button id="meta-reload-btn" title="Reload page">↻</button>
             <button id="btn-save-default" class="meta-btn">Save Default</button>
             <button id="btn-load-default" class="meta-btn">Load Default</button>
+            <button id="btn-clear-level" class="meta-btn">Clear Level</button>
             <button id="btn-inspect-tool" class="meta-btn" title="Inspect: click any object to edit its properties">Property Editor</button>
           </div>
           <div class="meta-row">
-            <button id="btn-set-checkpoint" class="meta-btn">Set Checkpoint</button>
-            <button id="btn-restore-checkpoint" class="meta-btn" id="btn-restore-checkpoint">Restore</button>
           </div>
           <div id="meta-status"></div>
         </div>
       </div>
+      <div class="hint" id="hint">Drag some Junk to a pile to get started!</div>
     </div>
     <div id="mode-label">Mode: Game Interact</div>
     <div id="version-label"></div>
-    <div class="hint" id="hint">
-      Drag a pile from the top palette into this area.<br>
-      Use <b>Draw Route</b> to drag a line between two piles.<br>
-      Click a worker (portrait or in level) to select it. Drag a worker to lift &amp; assign to a Route.
-    </div>
   </div>
 </div>
 <div id="debug-panel">
@@ -376,7 +363,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#40';
+const APP_VERSION = '0.1.2#72';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -395,13 +382,12 @@ let selectedWorkerId = null;
 //   VIEW MODES — what is visible (presentation only). Each game mode maps to a default
 //                view; a separate viewFocusStack can transiently push a different view
 //                without disturbing the game mode (e.g. hovering a pile in gameInteract
-//                shows routes by pushing 'ViewRoutes' on the stack).
+//                shows routes by pushing 'ViewGhost' on the stack).
 // View mode = single record per view: display label + per-type visibility state.
 // State values: 'hidden' | 'visible' | 'highlighted'. ('highlighted' renders the
 // same as 'visible' for now — placeholder until per-type highlighting lands.)
 const VIEW_MODES = {
   ViewDefault:     { display: 'View Default',  visible: {} },
-  ViewRoutes:      { display: 'View Routes',   visible: {} },
   ViewGhost:       { display: 'View Ghost',    visible: {} },
   ViewHoverReveal: { display: 'Hover Reveal',  visible: {}, readonly: true },
 };
@@ -409,9 +395,9 @@ const VIS_STATES = ['visible', 'hidden', 'highlighted']; // cycle order on toggl
 const COG_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><text y="20" font-size="20">⚙</text></svg>')}") 12 12, auto`;
 const MODES = {
   gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default',     view: 'ViewDefault' },
-  drawRoutes:   { display: 'Draw Routes',   tool: 'line',    cursor: 'crosshair',   view: 'ViewRoutes' },
+  drawRoutes:   { display: 'Draw Routes',   tool: 'line',    cursor: 'crosshair',   view: 'ViewGhost' },
   deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed', view: 'ViewDefault' },
-  liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewRoutes' },
+  liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewGhost' },
   inspectMode:  { display: 'Inspect',       tool: 'inspect', cursor: COG_CURSOR,    view: 'ViewDefault' },
 };
 const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', delete: 'deleteMode', inspect: 'inspectMode' };
@@ -434,7 +420,7 @@ function holdRouteView(routeId) {
     const r = routes.find(x => x.id === recentlyCreatedRouteId);
     if (r) { if (!r.states) r.states = {}; r.states.recentlyCreated = true; }
   }
-  pushViewFocus('ViewRoutes');
+  pushViewFocus('ViewGhost');
 }
 function releaseHeldRouteView() {
   if (!routeViewHeld) return;
@@ -472,7 +458,7 @@ function popTransientMode() {
 let pileFocusDepth = 0;
 function enterPileFocus() {
   pileFocusDepth++;
-  if (pileFocusDepth === 1) pushViewFocus(currentMode === 'drawRoutes' ? 'ViewRoutes' : 'ViewGhost');
+  if (pileFocusDepth === 1) pushViewFocus('ViewGhost');
 }
 function leavePileFocus() {
   if (pileFocusDepth === 0) return;
@@ -680,6 +666,11 @@ stage.on('click', e => {
 
 // suppress browser context menu over canvas
 containerEl.addEventListener('contextmenu', e => e.preventDefault());
+// Reset all hover depths when mouse exits the canvas — prevents stuck ViewGhost state.
+containerEl.addEventListener('mouseleave', () => {
+  while (pileFocusDepth > 0) leavePileFocus();
+  while (workerHoverDepth > 0) exitWorkerHover();
+});
 
 // Release the held route view when the user clicks something that isn't a pile
 // (or a pile's child anchor). Clicks on piles or anchors keep the routes visible
@@ -705,16 +696,20 @@ document.addEventListener('mousedown', e => {
 function isInUse(tplId) {
   return workers.some(w => w.templateId === tplId) || nodes.some(n => n.templateId === tplId);
 }
-function renderPalette() {
-  const cont = document.getElementById('palette-items');
-  cont.innerHTML = '';
-  const items = palette[activeTab];
-  if (!items) return;
-  items.forEach(tpl => {
-    const el = document.createElement('div');
-    el.className = 'palette-item';
-    if (isInUse(tpl.id)) el.classList.add('in-use');
-    el.dataset.tplId = tpl.id;
+function makePaletteItem(tpl) {
+  const el = document.createElement('div');
+  el.className = 'palette-item';
+  if (isInUse(tpl.id)) el.classList.add('in-use');
+  el.dataset.tplId = tpl.id;
+  if (tpl.kind === 'worker' && tpl.name) {
+    const img = document.createElement('div');
+    img.style.cssText = 'width:36px;height:36px;border-radius:6px;background-size:cover;background-position:center;background-image:url(\'icons/icon_worker_' + tpl.name + '.png\')';
+    el.appendChild(img);
+    const cap = document.createElement('div');
+    cap.style.cssText = 'position:absolute;bottom:2px;right:4px;font-size:9px;color:#aaa';
+    cap.textContent = 'c' + tpl.capacity;
+    el.appendChild(cap);
+  } else {
     const sw = document.createElement('div');
     if (tpl.kind === 'worker') sw.className = 'swatch-circle';
     else if (tpl.shape === 'triangle') sw.className = 'swatch-triangle';
@@ -727,20 +722,25 @@ function renderPalette() {
       cap.textContent = 'c' + tpl.capacity;
       el.appendChild(cap);
     }
-    if (tpl.label) {
-      const lbl = document.createElement('div');
-      lbl.style.cssText = 'position:absolute;bottom:2px;left:0;right:0;font-size:8px;color:#aaa;text-align:center;pointer-events:none;line-height:1';
-      lbl.textContent = tpl.label;
-      el.appendChild(lbl);
-    }
-    el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
-    el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
-    if (tpl.kind === 'object') {
-      el.addEventListener('mouseenter', () => enterPileFocus());
-      el.addEventListener('mouseleave', () => leavePileFocus());
-    }
-    cont.appendChild(el);
-  });
+  }
+  if (tpl.label) {
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'position:absolute;bottom:2px;left:0;right:0;font-size:8px;color:#aaa;text-align:center;pointer-events:none;line-height:1';
+    lbl.textContent = tpl.label;
+    el.appendChild(lbl);
+  }
+  el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
+  el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
+  if (tpl.kind === 'object') {
+    el.addEventListener('mouseenter', () => enterPileFocus());
+    el.addEventListener('mouseleave', () => leavePileFocus());
+  }
+  return el;
+}
+function renderPalette() {
+  const cont = document.getElementById('palette-items');
+  cont.innerHTML = '';
+  [...(palette.objects || []), ...(palette.workers || [])].forEach(tpl => cont.appendChild(makePaletteItem(tpl)));
 }
 document.querySelectorAll('#tabs .tab').forEach(b => {
   b.addEventListener('click', () => {
@@ -823,7 +823,7 @@ function placeNode(tpl, x, y) {
   const node = {
     id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0,
     shape: tpl.shape || 'rect', label: tpl.label || '',
-    scrap: {},
+    scrap: [],
     states: { hovered: false },
   };
   nodes.push(node);
@@ -966,44 +966,52 @@ function drawNode(node) {
     ? new Konva.RegularPolygon({ sides: 3, radius: 6, fill: node.color, stroke: node.color, strokeWidth: 1, name: 'nodeshape' })
     : new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: node.color, strokeWidth: 1.5, name: 'nodeshape' });
   const hitbox = new Konva.Circle({ radius: isTriangle ? 10 : 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
+  const anchorHit = new Konva.Circle({ radius: 11, fill: 'transparent', name: 'anchor-hit' });
   const stack = new Konva.Group({ name: 'stack' });
   if (!isTriangle) {
     const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
-    grp.add(shape, tex, hitbox, stack);
+    grp.add(shape, tex, hitbox, anchorHit, stack);
   } else {
-    grp.add(shape, hitbox, stack);
+    grp.add(shape, hitbox, anchorHit, stack);
   }
+  let grpFocusPushed = false;
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
-  grp.on('mouseenter', () => {
-    enterPileFocus();
-    setPileState(node, 'hovered', true);
-  });
-  grp.on('mouseleave', () => {
-    leavePileFocus();
-    setPileState(node, 'hovered', false);
-  });
+  grp.on('mouseenter', () => { if (!lineDraft) { grpFocusPushed = true; enterPileFocus(); } });
+  grp.on('mouseleave', () => { if (grpFocusPushed) { grpFocusPushed = false; leavePileFocus(); } });
+  anchorHit.on('mouseenter', () => enterPileFocus());
+  anchorHit.on('mouseleave', () => leavePileFocus());
   nodeLayer.add(grp);
   updateNodeStack(node);
   nodeLayer.batchDraw();
+}
+function scrapPieceRand(pileId, pieceIdx) {
+  // FNV-1a hash of pile ID for base seed
+  let base = 0x811c9dc5;
+  for (let i = 0; i < pileId.length; i++) {
+    base ^= pileId.charCodeAt(i);
+    base = Math.imul(base, 0x01000193) >>> 0;
+  }
+  // Mix base with pieceIdx via Knuth multiplicative hash, then finalize
+  let h = (base ^ Math.imul(pieceIdx + 1, 0x9e3779b9)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  const h2 = Math.imul(h ^ 0xdeadbeef, 0x9e3779b9) >>> 0;
+  const h3 = Math.imul(h2 ^ 0xcafebabe, 0x9e3779b9) >>> 0;
+  return { x: (h  / 0xFFFFFFFF - 0.5) * 28, y: (h2 / 0xFFFFFFFF - 0.5) * 28, rot: h3 / 0xFFFFFFFF * 360 };
 }
 function updateNodeStack(node) {
   const grp = nodeLayer.findOne('#' + node.id);
   if (!grp) return;
   const stack = grp.findOne('.stack');
   stack.destroyChildren();
-  const entries = Object.entries(node.scrap || {}).filter(([, c]) => c > 0);
-  entries.forEach(([typeId, count], i) => {
-    const tpl = SCRAP_TYPES.find(t => t.id === typeId);
+  (node.scrap || []).forEach((piece, i) => {
+    const tpl = SCRAP_TYPES.find(t => t.id === piece.type);
     const color = tpl?.color ?? '#f1c40f';
-    const y = -32 - i * 18;
+    const { x, y, rot } = scrapPieceRand(node.id, i);
     stack.add(new Konva.RegularPolygon({
-      x: -7, y, sides: 3, radius: 6,
-      fill: color, stroke: 'rgba(255,255,255,0.08)', strokeWidth: 0.8, listening: false,
-    }));
-    stack.add(new Konva.Text({
-      x: 2, y: y - 5, text: String(count),
-      fontSize: 10, fontFamily: 'system-ui, sans-serif',
-      fill: '#fff', fontStyle: 'bold', listening: false,
+      x, y, sides: 3, radius: 6, rotation: rot,
+      fill: color, stroke: 'rgba(255,255,255,0.18)', strokeWidth: 0.8, listening: false,
     }));
   });
   nodeLayer.batchDraw();
@@ -1099,18 +1107,18 @@ function hideGhost(w) {
 function workerSay(w, text) {
   const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
   grp.findOne('.speechbubble')?.destroy();
-  const pad = 6, tailW = 7, tailH = 6;
+  const pad = 3, tailW = 4, tailH = 3;
   const bubble = new Konva.Group({ name: 'speechbubble', listening: false });
   const label = new Konva.Text({
-    text, fontSize: 13, fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
+    text, fontSize: 7, fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
     fontStyle: 'bold', fill: '#1a1a1a', listening: false,
   });
   const tw = label.width(), th = label.height();
-  const bg = new Konva.Rect({ x: 0, y: 0, width: tw + pad * 2, height: th + pad * 2, fill: '#fff', cornerRadius: 5, shadowColor: 'rgba(0,0,0,0.3)', shadowBlur: 6, shadowOffsetY: 2, listening: false });
+  const bg = new Konva.Rect({ x: 0, y: 0, width: tw + pad * 2, height: th + pad * 2, fill: '#fff', cornerRadius: 3, shadowColor: 'rgba(0,0,0,0.3)', shadowBlur: 3, shadowOffsetY: 1, listening: false });
   const tail = new Konva.Line({ points: [0, (th + pad * 2) / 2 - tailH / 2, -tailW, (th + pad * 2) / 2, 0, (th + pad * 2) / 2 + tailH / 2], fill: '#fff', closed: true, listening: false });
   label.position({ x: pad, y: pad });
   bubble.add(bg, tail, label);
-  bubble.position({ x: 20, y: -(th / 2 + pad) });
+  bubble.position({ x: 12, y: -(th / 2 + pad) });
   grp.add(bubble);
   workerLayer.batchDraw();
   setTimeout(() => { bubble.destroy(); workerLayer.batchDraw(); }, 1500);
@@ -1322,6 +1330,10 @@ function onNodeMouseDown(e, node, grp) {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
   } else if (currentMode === 'gameInteract') {
+    const p = getWorldPointer();
+    if (!p) return;
+    const dx = p.x - node.x, dy = p.y - node.y;
+    if (dx*dx + dy*dy > 11*11) return;
     e.cancelBubble = true;
     startLineDraft(node);
   }
@@ -1352,18 +1364,21 @@ function startLineDraft(fromNode) {
   cancelLineDraft();
   const previewColor = peekRouteColor();
   const from = { x: fromNode.x, y: fromNode.y };
-  const path = new Konva.Path({ stroke: previewColor, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
-  const endA = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2 });
-  const endB = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: previewColor, stroke: '#fff', strokeWidth: 2, visible: false });
+  const ghostStroke = 'rgba(255,255,255,0.55)';
+  const path = new Konva.Path({ stroke: ghostStroke, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
+  const endA = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: 'rgba(255,255,255,0.3)', stroke: ghostStroke, strokeWidth: 2 });
+  const endB = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: 'rgba(255,255,255,0.3)', stroke: ghostStroke, strokeWidth: 2, visible: false });
   const endBArrow = new Konva.Line({
     x: from.x, y: from.y,
     points: [-8, -8, 0, 0, -8, 8],
-    stroke: previewColor, strokeWidth: 3, lineCap: 'round', lineJoin: 'round',
+    stroke: ghostStroke, strokeWidth: 3, lineCap: 'round', lineJoin: 'round',
     listening: false,
   });
   const scrapPreview = new Konva.Group({ x: from.x, y: from.y, listening: false });
-  const entries = Object.entries(fromNode.scrap || {}).filter(([, c]) => c > 0);
-  entries.forEach(([typeId, count], i) => {
+  const counts = {};
+  (fromNode.scrap || []).forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
+  const entries = SCRAP_TYPES.map(t => [t, counts[t.id] || 0]).filter(([, c]) => c > 0);
+  entries.forEach(([tpl, count], i) => {
     const y = -22 - i * 16;
     scrapPreview.add(new Konva.RegularPolygon({
       x: -7, y, sides: 3, radius: 6,
@@ -1371,14 +1386,14 @@ function startLineDraft(fromNode) {
       listening: false,
     }));
     scrapPreview.add(new Konva.Text({
-      x: 2, y: y - 5, text: String(count),
+      x: 2, y: y - 5, text: count + '  ' + tpl.label,
       fontSize: 10, fontFamily: 'system-ui, sans-serif',
       fill: 'rgba(255,255,255,0.4)', fontStyle: 'bold', listening: false,
     }));
   });
   uiLayer.add(path, endA, endB, endBArrow, scrapPreview);
   lineDraft = { fromNode, fromX: from.x, fromY: from.y, path, endA, endB, endBArrow, scrapPreview, previewColor };
-  pushViewFocus('ViewRoutes');
+  pushViewFocus('ViewGhost');
   uiLayer.batchDraw();
 }
 function cancelLineDraft() {
@@ -1396,7 +1411,7 @@ function nodeAtPoint(x, y, excludeId) {
   for (const n of nodes) {
     if (excludeId && n.id === excludeId) continue;
     const dx = n.x - x, dy = n.y - y;
-    if (dx*dx + dy*dy <= 24*24) return n;
+    if (dx*dx + dy*dy <= 11*11) return n;
   }
   return null;
 }
@@ -1446,13 +1461,27 @@ stage.on('mouseup', () => {
 });
 
 function slotStatusText(route) {
-  if (!route.workerId) return 'No Worker';
+  if (!route.workerId) {
+    const allowed = route.allowedTypes || defaultAllowedTypes();
+    const enabled = SCRAP_TYPES.filter(t => allowed[t.id] !== false).map(t => t.label);
+    return 'No Worker' + (enabled.length ? '\n' + enabled.join('\n') : '');
+  }
   const w = workers.find(w => w.id === route.workerId);
-  if (!w) return 'No Worker';
+  if (!w) {
+    const allowed = route.allowedTypes || defaultAllowedTypes();
+    const enabled = SCRAP_TYPES.filter(t => allowed[t.id] !== false).map(t => t.label);
+    return 'No Worker' + (enabled.length ? '\n' + enabled.join('\n') : '');
+  }
   const tpl = palette.workers.find(t => t.id === w.templateId);
   const name = tpl ? tpl.name[0].toUpperCase() + tpl.name.slice(1) : 'Worker';
   const hasInventory = Object.values(w.inventory || {}).some(v => v > 0);
-  return name + ' · ' + (hasInventory ? 'Carrying' : 'Idle');
+  let status;
+  if (w.states?.lifting)  status = 'Lifting';
+  else if (w.targetX != null) status = 'Walking to slot';
+  else if (w.noScrap)     status = 'No more scrap!';
+  else if (hasInventory)  status = 'Carrying';
+  else                    status = 'Walking';
+  return name + ' · ' + status;
 }
 
 // ===== ROUTE HOVER (shared by route path and slot) =====
@@ -1699,46 +1728,9 @@ function selectWorker(id) {
     w.states.selected = (w.id === id);
   });
   refreshAllWorkers();
-  renderPortraits();
+
 }
 
-// ===== WORKER PORTRAITS =====
-function renderPortraits() {
-  const cont = document.getElementById('worker-portraits'); if (!cont) return;
-  cont.innerHTML = '';
-  workers.forEach(w => {
-    const tpl = palette.workers.find(t => t.id === w.templateId);
-    const name = tpl?.name ?? '';
-    const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'portrait-wrap' + (w.id === selectedWorkerId ? ' selected' : '');
-    wrap.onclick = () => selectWorker(w.id);
-
-    const el = document.createElement('div');
-    el.className = 'portrait';
-    if (name) {
-      el.style.backgroundImage = `url('icons/icon_worker_${name}.png')`;
-    } else {
-      el.style.background = w.color;
-    }
-
-    const badge = document.createElement('div');
-    badge.className = 'cap-badge';
-    badge.textContent = 'c' + w.capacity;
-    el.appendChild(badge);
-    wrap.appendChild(el);
-
-    if (displayName) {
-      const nameEl = document.createElement('div');
-      nameEl.className = 'portrait-name';
-      nameEl.textContent = displayName;
-      wrap.appendChild(nameEl);
-    }
-
-    cont.appendChild(wrap);
-  });
-}
 
 function spawnInitialWorkers() {
   const positions = [{x:160,y:160},{x:160,y:240},{x:160,y:320}];
@@ -1805,7 +1797,7 @@ function deleteWorker(w) {
   const gh = workerLayer.findOne('#ghost_' + w.id); if (gh) gh.destroy();
   workerLayer.batchDraw();
   if (selectedWorkerId === w.id) selectedWorkerId = null;
-  renderPortraits();
+
 }
 
 // ===== PROPERTY WINDOW =====
@@ -1903,7 +1895,7 @@ function openInspectPanel(type, entity, clientX, clientY) {
 
     addInspectRow(body, 'Capacity', 'number', entity.capacity, 1, 20, v => {
       entity.capacity = v;
-      renderPortraits();
+    
     });
 
 
@@ -1960,7 +1952,7 @@ function addInspectRow(container, label, type, value, min, max, onChange) {
 }
 
 function refreshNodeItems(node) {
-  node.items = Object.values(node.scrap || {}).reduce((s, v) => s + Math.max(0, v | 0), 0);
+  node.items = (node.scrap || []).length;
 }
 
 function addInspectScrapRow(container, scrapTpl, pileNode) {
@@ -1980,14 +1972,19 @@ function addInspectScrapRow(container, scrapTpl, pileNode) {
   minus.textContent = '−'; minus.style.cssText = btnStyle;
   const countEl = document.createElement('span');
   countEl.style.cssText = 'width:22px;text-align:center;font-size:12px;color:#fff;display:inline-block;flex-shrink:0';
-  countEl.textContent = (pileNode.scrap || {})[scrapTpl.id] || 0;
+  countEl.textContent = (pileNode.scrap || []).filter(p => p.type === scrapTpl.id).length;
   const plus = document.createElement('button');
   plus.textContent = '+'; plus.style.cssText = btnStyle;
 
   const update = delta => {
-    if (!pileNode.scrap) pileNode.scrap = {};
-    pileNode.scrap[scrapTpl.id] = Math.max(0, (pileNode.scrap[scrapTpl.id] || 0) + delta);
-    countEl.textContent = pileNode.scrap[scrapTpl.id];
+    if (!Array.isArray(pileNode.scrap)) pileNode.scrap = [];
+    if (delta > 0) {
+      pileNode.scrap.push({ type: scrapTpl.id });
+    } else {
+      const idx = pileNode.scrap.map(p => p.type).lastIndexOf(scrapTpl.id);
+      if (idx !== -1) pileNode.scrap.splice(idx, 1);
+    }
+    countEl.textContent = pileNode.scrap.filter(p => p.type === scrapTpl.id).length;
     refreshNodeItems(pileNode);
     updateNodeStack(pileNode);
   };
@@ -2199,7 +2196,7 @@ const anim = new Konva.Animation(frame => {
     // noScrap: waiting at slot for scrap to appear at from-pile
     if (w.noScrap) {
       const allowed = route.allowedTypes || defaultAllowedTypes();
-      const pickType = SCRAP_TYPES.find(t => allowed[t.id] && (fn.scrap || {})[t.id] > 0);
+      const pickType = SCRAP_TYPES.find(t => allowed[t.id] && (fn.scrap || []).some(p => p.type === t.id));
       if (pickType) {
         w.noScrap = false;
         // resume: start heading toward fn from slot midpoint
@@ -2237,26 +2234,29 @@ const anim = new Konva.Animation(frame => {
         const inv = w.inventory || {};
         const hasItems = Object.values(inv).some(v => v > 0);
         if (hasItems) {
-          if (!tn.scrap) tn.scrap = {};
+          if (!Array.isArray(tn.scrap)) tn.scrap = [];
           Object.entries(inv).forEach(([type, count]) => {
             animateScrapArc(w.x, w.y, tn.x, tn.y, type);
-            tn.scrap[type] = (tn.scrap[type] || 0) + count;
+            for (let i = 0; i < count; i++) tn.scrap.push({ type });
           });
           w.inventory = {};
           refreshNodeItems(tn);
           updateNodeStack(tn);
+          workerSay(w, 'Oof!');
         }
         w.dir = -1; w.segIdx = 0; w.segT = 0;
       } else {
         // Arrived at from-pile: pick up 1 allowed scrap
-        const pickType = SCRAP_TYPES.find(t => (route.allowedTypes || defaultAllowedTypes())[t.id] && (fn.scrap || {})[t.id] > 0);
+        const pickType = SCRAP_TYPES.find(t => (route.allowedTypes || defaultAllowedTypes())[t.id] && (fn.scrap || []).some(p => p.type === t.id));
         if (pickType) {
-          fn.scrap[pickType.id]--;
+          const idx = fn.scrap.map(p => p.type).lastIndexOf(pickType.id);
+          fn.scrap.splice(idx, 1);
           if (!w.inventory) w.inventory = {};
           w.inventory[pickType.id] = (w.inventory[pickType.id] || 0) + 1;
           refreshNodeItems(fn);
           updateNodeStack(fn);
           animateScrapArc(fn.x, fn.y, w.x, w.y, pickType.id);
+          workerSay(w, 'Hup!');
           w.dir = 1; w.segIdx = 0; w.segT = 0;
         } else {
           // No allowed scrap — go wait at slot
@@ -2275,6 +2275,10 @@ const anim = new Konva.Animation(frame => {
     dirty = true;
   } catch(e) { showDebugError(e); } });
   tickFlashes();
+  routes.forEach(route => {
+    const lbl = uiLayer.findOne('#slot_' + route.id)?.findOne('.slot-label');
+    if (lbl && lbl.visible()) lbl.text(slotStatusText(route));
+  });
   if (routes.length > 0) {
     routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
@@ -2312,16 +2316,9 @@ document.addEventListener('keydown', e => {
 });
 
 // ===== DEBUG PANEL =====
+// Physical objects (workers, piles, scrap) are always visible — never toggled by view mode.
+// Only informational/virtual overlays belong in VISUAL_TYPES.
 const VISUAL_TYPES = [
-  {
-    key: 'workers', label: 'Workers', layer: 'physical',
-    getInstances: () => workers.map(w => {
-      const tpl = palette.workers.find(t => t.id === w.templateId);
-      const n = tpl?.name ?? '';
-      return { id: w.id, label: n ? n[0].toUpperCase() + n.slice(1) : w.id };
-    }),
-    apply: vis => { workerLayer.find('.worker').forEach(g => g.visible(vis)); workerLayer.batchDraw(); }
-  },
   {
     key: 'workerLabels', label: 'Worker Labels', layer: 'virtual',
     getInstances: () => workers.map(w => {
@@ -2330,16 +2327,6 @@ const VISUAL_TYPES = [
       return { id: w.id + '_lbl', label: (n ? n[0].toUpperCase() + n.slice(1) : w.id) + ' label' };
     }),
     apply: vis => { workerLayer.find('.workerlabel').forEach(el => el.visible(vis)); workerLayer.batchDraw(); }
-  },
-  {
-    key: 'piles', label: 'Piles', layer: 'physical',
-    getInstances: () => nodes.map(n => ({ id: n.id, label: 'Pile ' + n.id })),
-    apply: vis => { nodeLayer.find('.node').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
-  },
-  {
-    key: 'pileItems', label: 'Pile Items', layer: 'virtual',
-    getInstances: () => nodes.filter(n => n.items > 0).map(n => ({ id: n.id + '_stk', label: 'Pile ' + n.id + ' (' + n.items + ' items)' })),
-    apply: vis => { nodeLayer.find('.stack').forEach(g => g.visible(vis)); nodeLayer.batchDraw(); }
   },
   {
     key: 'routes', label: 'Routes', layer: 'virtual',
@@ -2370,17 +2357,18 @@ Object.keys(VIEW_MODES).forEach(viewKey => {
   VISUAL_TYPES.forEach(t => {
     let val = 'visible';
     if (viewKey === 'ViewGhost') {
-      // Ghost view: show physical objects normally; virtual types appear only as ghost overlays.
-      val = t.layer === 'physical' ? 'visible' : 'hidden';
-    } else if (viewKey !== 'ViewHoverReveal' && (t.key === 'routes' || t.key === 'routeEnds' || t.key === 'routeSlots')) {
-      val = (viewKey === 'ViewRoutes') ? 'visible' : 'hidden';
+      // Routes visible in ghost view; workerLabels stay live on workerLayer so they
+      // track animated positions without lag. Other virtual types use ghost overlays.
+      val = (t.key === 'routes' || t.key === 'routeSlots' || t.key === 'workerLabels') ? 'visible' : 'hidden';
+    } else if (viewKey !== 'ViewHoverReveal' && (t.key === 'routes' || t.key === 'routeSlots' || t.key === 'workerLabels')) {
+      val = 'hidden'; // Routes and worker labels only visible in ghost/hover view.
     }
     VIEW_MODES[viewKey].visible[t.key] = val;
   });
 });
 
 // Persistence — save edits across reloads.
-const VIEW_MODES_STORAGE_KEY = 'uxprototype.viewModes.v1';
+const VIEW_MODES_STORAGE_KEY = 'uxprototype.viewModes.v2';
 function saveViewModes() {
   try {
     const data = {};
@@ -2459,21 +2447,26 @@ function buildRevealGhosts(includeRoutes = true) {
       revealLayer.add(new Konva.Rect({ x: grp.x() + rect.x(), y: grp.y() + rect.y(), width: rect.width(), height: rect.height(), cornerRadius: rect.cornerRadius(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: rect.strokeWidth(), dash: rect.dash(), fill: 'rgba(255,255,255,0.03)', listening: false }));
     });
   }
-  nodeLayer.find('.stack').forEach(stackGrp => {
-    const nodeGrp = stackGrp.getParent();
-    stackGrp.getChildren().forEach(el => {
-      if (el.getClassName() !== 'RegularPolygon') return; // skip Text count labels
+  nodeLayer.find('.node').forEach(nodeGrp => {
+    const node = nodes.find(n => n.id === nodeGrp.id());
+    if (!node) return;
+    if (lineDraft && lineDraft.fromNode.id === node.id) return;
+    const counts = {};
+    (node.scrap || []).forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
+    const entries = SCRAP_TYPES.map(t => [t, counts[t.id] || 0]).filter(([, c]) => c > 0);
+    entries.forEach(([tpl, count], i) => {
+      const y = nodeGrp.y() - 32 - i * 18;
       revealLayer.add(new Konva.RegularPolygon({
-        x: nodeGrp.x() + el.x(), y: nodeGrp.y() + el.y(),
-        sides: 3, radius: el.radius(),
+        x: nodeGrp.x() - 7, y, sides: 3, radius: 6,
         fill: 'rgba(255,255,255,0.25)', stroke: 'rgba(255,255,255,0.4)', strokeWidth: 1,
         listening: false,
       }));
+      revealLayer.add(new Konva.Text({
+        x: nodeGrp.x() + 2, y: y - 5, text: count + '  ' + tpl.label,
+        fontSize: 10, fontFamily: 'system-ui, sans-serif',
+        fill: 'rgba(255,255,255,0.5)', fontStyle: 'bold', listening: false,
+      }));
     });
-  });
-  workerLayer.find('.workerlabel').forEach(el => {
-    const grp = el.getParent();
-    revealLayer.add(new Konva.Text({ x: grp.x() + el.x(), y: grp.y() + el.y(), text: el.text(), fontSize: el.fontSize(), fontFamily: el.fontFamily(), fill: 'rgba(255,255,255,0.25)', listening: false }));
   });
   revealLayer.batchDraw();
 }
@@ -2505,7 +2498,7 @@ function applyDebugVisibility() {
   }
   const view = debugPreviewing ? debugActiveView : effectiveView;
   if (view === 'ViewHoverReveal') {
-    VISUAL_TYPES.forEach(t => t.apply(t.layer === 'physical'));
+    VISUAL_TYPES.forEach(t => t.apply(false));
     buildRevealGhosts();
     return;
   }
@@ -2814,7 +2807,7 @@ function serializeLevel() {
     },
     nodes: nodes.map(n => ({
       id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items,
-      shape: n.shape, label: n.label, scrap: n.scrap || {},
+      shape: n.shape, label: n.label, scrap: n.scrap || [],
     })),
     routes: routes.map(r => ({
       id: r.id, fromId: r.fromId, toId: r.toId, color: r.color, workerId: r.workerId,
@@ -2875,7 +2868,9 @@ function loadLevelData(data) {
 
   // Nodes
   (data.nodes || []).forEach(n => {
-    const node = { id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: n.items || 0, shape: n.shape || 'rect', label: n.label || '', scrap: n.scrap || {} };
+    let scrap = n.scrap || [];
+    if (!Array.isArray(scrap)) { const arr = []; Object.entries(scrap).forEach(([type, count]) => { for (let i = 0; i < count; i++) arr.push({ type }); }); scrap = arr; }
+    const node = { id: n.id, templateId: n.templateId, x: n.x, y: n.y, color: n.color, items: scrap.length, shape: n.shape || 'rect', label: n.label || '', scrap };
     nodes.push(node);
     drawNode(node);
   });
@@ -2927,7 +2922,7 @@ function loadLevelData(data) {
   }
 
   // Re-render dependent UI
-  renderPortraits();
+
   renderPalette();
   applyMode();
   applyHitboxVisibility();
@@ -2962,7 +2957,7 @@ document.getElementById('btn-load-level').addEventListener('click', uploadLevel)
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
-const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-01T21:08:40.700Z","stage":{"x":0,"y":0,"scale":1},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i4","templateId":"oA","x":680,"y":520,"color":"#2f6fd6","items":16,"shape":"rect","label":"","scrap":{"wood":7,"steel":5,"plastic":4}},{"id":"i5","templateId":"oA","x":880,"y":400,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":{}}],"routes":[],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":720,"y":280,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":600,"y":320,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i3","templateId":"wC","color":"#f1c40f","capacity":3,"x":560,"y":400,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewRoutes":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}},"ViewGhost":{"visible":{"workers":"visible","workerLabels":"hidden","piles":"visible","pileItems":"hidden","routes":"hidden","routeSlots":"hidden","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":6,"routeColorIdx":0};
+const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-01T23:46:23.473Z","stage":{"x":-298.12141000000054,"y":-229.03895000000017,"scale":1.6105100000000008},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i27","templateId":"oA","x":680,"y":400,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i28","templateId":"oA","x":880,"y":360,"color":"#2f6fd6","items":35,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"}]},{"id":"i29","templateId":"oA","x":960,"y":560,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i32","templateId":"oA","x":1120,"y":320,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]}],"routes":[],"workers":[{"id":"i24","templateId":"wA","color":"#e74c3c","capacity":1,"x":160,"y":160,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i25","templateId":"wB","color":"#3498db","capacity":2,"x":160,"y":240,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i26","templateId":"wC","color":"#f1c40f","capacity":3,"x":160,"y":320,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i30","templateId":"wA","color":"#e74c3c","capacity":1,"x":541.518779765416,"y":331.59617139912194,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i31","templateId":"wB","color":"#3498db","capacity":2,"x":478.80572613644136,"y":381.2698772438543,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible","workers":"visible","piles":"visible","pileItems":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"hidden","routeSlots":"hidden","grid":"hidden","workers":"visible","piles":"visible","pileItems":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible","workers":"visible","piles":"visible","pileItems":"visible"}}},"nextId":33,"routeColorIdx":0};
 let metaOpen = true;
 
 function toggleMetaControls() {
@@ -2975,6 +2970,7 @@ function toggleMetaControls() {
   btn.textContent = metaOpen ? '−' : '+';
 }
 document.getElementById('meta-controls-toggle').addEventListener('click', toggleMetaControls);
+toggleMetaControls(); // start collapsed
 
 function setMetaStatus(msg, ok) {
   const el = document.getElementById('meta-status');
@@ -3012,43 +3008,16 @@ function loadDefault() {
 
 document.getElementById('btn-save-default').addEventListener('click', saveDefault);
 document.getElementById('btn-load-default').addEventListener('click', loadDefault);
+document.getElementById('btn-clear-level').addEventListener('click', () => {
+  clearAllLevelShapes();
+  spawnInitialWorkers();
 
-// ===== CHECKPOINT =====
-const CHECKPOINT_KEY = 'uxproto_checkpoint';
+  clearRevealGhosts();
+  applyDebugVisibility();
+  [nodeLayer, edgeLayer, workerLayer, uiLayer, revealLayer].forEach(l => l.batchDraw());
+  setMetaStatus('Level cleared.', true);
+});
 
-function updateCheckpointBtn() {
-  const btn = document.getElementById('btn-restore-checkpoint');
-  const has = !!localStorage.getItem(CHECKPOINT_KEY);
-  btn.disabled = !has;
-  btn.style.opacity = has ? '1' : '0.4';
-  btn.style.borderColor = has ? 'rgba(255,200,80,0.6)' : '';
-  btn.style.color = has ? 'rgba(255,200,80,0.9)' : '';
-}
-
-function saveCheckpoint() {
-  try {
-    localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(serializeLevel()));
-    setMetaStatus('Checkpoint set.', true);
-    updateCheckpointBtn();
-  } catch (e) {
-    setMetaStatus('Checkpoint failed.', false);
-  }
-}
-
-function restoreCheckpoint() {
-  const raw = localStorage.getItem(CHECKPOINT_KEY);
-  if (!raw) { setMetaStatus('No checkpoint.', false); return; }
-  try {
-    loadLevelData(JSON.parse(raw));
-    setMetaStatus('Checkpoint restored.', true);
-  } catch (e) {
-    setMetaStatus('Restore failed: ' + e.message, false);
-  }
-}
-
-document.getElementById('btn-set-checkpoint').addEventListener('click', saveCheckpoint);
-document.getElementById('btn-restore-checkpoint').addEventListener('click', restoreCheckpoint);
-updateCheckpointBtn();
 document.getElementById('btn-inspect-tool').addEventListener('click', () => {
   if (currentMode === 'inspectMode') setMode('gameInteract');
   else setMode('inspectMode');
@@ -3080,7 +3049,6 @@ setInterval(() => {
 
 // ===== INIT =====
 spawnInitialWorkers();
-renderPortraits();
 renderPalette();
 applyMode();
 

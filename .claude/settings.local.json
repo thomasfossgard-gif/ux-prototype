@@ -5,7 +5,19 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(grep -n \"\\\\.visible\\\\s*\\(\" \"C:\\\\\\\\CodingPractice\\\\\\\\UXPrototype\\\\\\\\index.html\")"
+      "Bash(grep -n \"\\\\.visible\\\\s*\\(\" \"C:\\\\\\\\CodingPractice\\\\\\\\UXPrototype\\\\\\\\index.html\")",
+      "Bash(curl -s \"https://unpkg.com/konva@9/konva.min.js\")",
+      "WebFetch(domain:unpkg.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(git -C \"C:\\\\CodingPractice\\\\UXPrototype\" status)",
+      "Bash(git -C \"C:\\\\CodingPractice\\\\UXPrototype\" diff)",
+      "Bash(git commit --amend -m ' *)",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__read_console_messages",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "Bash(grep -v \"BUNDLED_LEVEL\\\\|//.*checkpoint\\\\|//.*restore\")",
+      "Bash(grep -v \"BUNDLED\\\\|//\")"
     ]
   },
   "statusLine": {

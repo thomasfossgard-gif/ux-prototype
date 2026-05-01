@@ -1,8 +1,6 @@
 TODO - UXPrototype
 ==================
 
-[ ] New View Mode: HintShow
 [ ] Highlighting
-[ ] Mode Background Yard colors
-[ ] Mode Visual Changes Matrix - Editable
-[ ] Scroll and zoom and reset view button (bottom right)
+[ ] When clicking worker in portraits, should get into drag ghost mode [2026-05-02]
+[ ] Reposition and rewrite help text [2026-05-02]
