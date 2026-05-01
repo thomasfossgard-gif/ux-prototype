@@ -376,7 +376,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#39';
+const APP_VERSION = '0.1.2#40';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -2445,18 +2445,20 @@ function applyHitboxVisibility() {
 }
 
 let debugPreviewing = false; // true while the panel is overriding the live view
-function buildRevealGhosts() {
+function buildRevealGhosts(includeRoutes = true) {
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
     revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
   });
-  edgeLayer.find('.routepath').forEach(el => {
-    revealLayer.add(new Konva.Path({ data: el.data(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: el.strokeWidth(), lineCap: 'round', lineJoin: 'round', listening: false }));
-  });
-  uiLayer.find('.slot').forEach(grp => {
-    const rect = grp.findOne('Rect'); if (!rect) return;
-    revealLayer.add(new Konva.Rect({ x: grp.x() + rect.x(), y: grp.y() + rect.y(), width: rect.width(), height: rect.height(), cornerRadius: rect.cornerRadius(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: rect.strokeWidth(), dash: rect.dash(), fill: 'rgba(255,255,255,0.03)', listening: false }));
-  });
+  if (includeRoutes) {
+    edgeLayer.find('.routepath').forEach(el => {
+      revealLayer.add(new Konva.Path({ data: el.data(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: el.strokeWidth(), lineCap: 'round', lineJoin: 'round', listening: false }));
+    });
+    uiLayer.find('.slot').forEach(grp => {
+      const rect = grp.findOne('Rect'); if (!rect) return;
+      revealLayer.add(new Konva.Rect({ x: grp.x() + rect.x(), y: grp.y() + rect.y(), width: rect.width(), height: rect.height(), cornerRadius: rect.cornerRadius(), stroke: 'rgba(255,255,255,0.25)', strokeWidth: rect.strokeWidth(), dash: rect.dash(), fill: 'rgba(255,255,255,0.03)', listening: false }));
+    });
+  }
   nodeLayer.find('.stack').forEach(stackGrp => {
     const nodeGrp = stackGrp.getParent();
     stackGrp.getChildren().forEach(el => {
@@ -2478,6 +2480,9 @@ function buildRevealGhosts() {
 function clearRevealGhosts() {
   revealLayer.destroyChildren();
   revealLayer.batchDraw();
+  routes.forEach(route => {
+    edgeLayer.findOne('#' + route.id)?.findOne('.routepath')?.stroke(route.color);
+  });
 }
 
 // Hover reveal depth — both pile hover and worker hover push ViewHoverReveal.
@@ -2507,11 +2512,19 @@ function applyDebugVisibility() {
   if (view === 'ViewGhost') {
     const vis = VIEW_MODES.ViewGhost.visible;
     VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
-    buildRevealGhosts();
-    uiLayer.find('.slot').forEach(s => {
-      const lbl = s.findOne('.slot-label');
-      if (lbl && s.routeRef) { lbl.text(slotStatusText(s.routeRef)); lbl.visible(true); }
+    buildRevealGhosts(false);
+    routes.forEach(route => {
+      const routeGrp = edgeLayer.findOne('#' + route.id);
+      if (routeGrp) { const rp = routeGrp.findOne('.routepath'); rp.stroke('rgba(255,255,255,0.55)'); rp.visible(true); }
+      const slotGrp = uiLayer.findOne('#slot_' + route.id);
+      if (slotGrp) {
+        const rect = slotGrp.findOne('Rect');
+        rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true);
+        const lbl = slotGrp.findOne('.slot-label');
+        if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); }
+      }
     });
+    edgeLayer.batchDraw();
     uiLayer.batchDraw();
     return;
   }
