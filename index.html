@@ -37,7 +37,8 @@
   #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
   #confirm-dialog button:hover { background: #4a90e2; }
   .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
-  #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(255,255,255,0.08); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
+  #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(0,0,0,0.3); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
+  #tick-indicator { position: absolute; left: -18px; top: 50%; margin-top: -5px; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 2px; pointer-events: none; }
   #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: 12px; z-index: 10; }
   #meta-controls { background: #232730; border: 1px solid #333; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; flex-shrink: 0; }
   #meta-controls-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #2a2d35; }
@@ -237,7 +238,7 @@
 <body>
 <div id="debug-overlay"></div>
 <div id="app">
-  <div id="playback-panel">
+  <div id="playback-panel"><div id="tick-indicator"></div>
     <div id="playback-btns">
       <button class="pb-btn active" id="pb-play" title="Play">&#9654;</button>
       <button class="pb-btn" id="pb-pause" title="Pause">&#9646;&#9646;</button>
@@ -375,7 +376,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#34';
+const APP_VERSION = '0.1.2#39';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -536,7 +537,7 @@ const nodeLayer = new Konva.Layer();
 const workerLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
 const revealLayer = new Konva.Layer({ listening: false });
-stage.add(gridLayer, edgeLayer, nodeLayer, workerLayer, uiLayer, revealLayer);
+stage.add(gridLayer, edgeLayer, nodeLayer, uiLayer, workerLayer, revealLayer);
 const versionEl = document.getElementById('version-label');
 versionEl.textContent = 'v' + APP_VERSION;
 
@@ -1444,6 +1445,16 @@ stage.on('mouseup', () => {
   if (created) holdRouteView(created.id);
 });
 
+function slotStatusText(route) {
+  if (!route.workerId) return 'No Worker';
+  const w = workers.find(w => w.id === route.workerId);
+  if (!w) return 'No Worker';
+  const tpl = palette.workers.find(t => t.id === w.templateId);
+  const name = tpl ? tpl.name[0].toUpperCase() + tpl.name.slice(1) : 'Worker';
+  const hasInventory = Object.values(w.inventory || {}).some(v => v > 0);
+  return name + ' · ' + (hasInventory ? 'Carrying' : 'Idle');
+}
+
 // ===== ROUTE HOVER (shared by route path and slot) =====
 function showRouteHover(route) {
   const routeGrp = edgeLayer.findOne('#' + route.id);
@@ -1456,6 +1467,8 @@ function showRouteHover(route) {
   if (slotGrp) {
     const rect = slotGrp.findOne('Rect');
     if (!rect.visible()) { rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true); dirty = true; }
+    const lbl = slotGrp.findOne('.slot-label');
+    if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); dirty = true; }
   }
   if (dirty) { edgeLayer.batchDraw(); uiLayer.batchDraw(); }
 }
@@ -1463,7 +1476,10 @@ function hideRouteHover(route) {
   const routeGrp = edgeLayer.findOne('#' + route.id);
   const slotGrp  = uiLayer.findOne('#slot_' + route.id);
   if (routeGrp) routeGrp.findOne('.routepath').stroke(route.color);
-  if (slotGrp)  slotGrp.findOne('Rect')?.stroke(route.color);
+  if (slotGrp) {
+    slotGrp.findOne('Rect')?.stroke(route.color);
+    slotGrp.findOne('.slot-label')?.visible(false);
+  }
   applyDebugVisibility();
 }
 
@@ -1510,6 +1526,11 @@ function drawSlotForRoute(route) {
     stroke: route.color, strokeWidth: 2, dash: [14, 8],
     fill: 'rgba(255,255,255,0.06)', visible: false, name: 'slot-rect',
   });
+  const slotLabel = new Konva.Text({
+    x: -40, y: 25, width: 80, text: '', align: 'center',
+    fontSize: 10, fontFamily: 'system-ui, sans-serif',
+    fill: 'rgba(255,255,255,0.5)', visible: false, listening: false, name: 'slot-label',
+  });
   const hitbox = new Konva.Circle({
     radius: 26, fillPatternImage: STRIPE_PATTERN, listening: false,
     name: 'hitbox-slot', visible: false,
@@ -1518,7 +1539,7 @@ function drawSlotForRoute(route) {
   const hoverHit = new Konva.Circle({
     radius: 28, fill: route.color, opacity: 0.001, name: 'hover-hit-slot',
   });
-  grp.add(slot, hitbox, hoverHit);
+  grp.add(slot, slotLabel, hitbox, hoverHit);
   grp.routeRef = route;
   grp.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
@@ -2128,6 +2149,8 @@ function showDebugError(e) {
 const SPEED_PX_PER_SEC = 90;
 const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
 let routeDashOffset = 0;
+let tickRot = 0;
+const tickIndicatorEl = document.getElementById('tick-indicator');
 const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
   let dirty = false;
@@ -2257,6 +2280,8 @@ const anim = new Konva.Animation(frame => {
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
     uiLayer.find('.slot-rect').forEach(r => r.dashOffset(routeDashOffset));
   }
+  tickRot += 360 * dt;
+  tickIndicatorEl.style.transform = `rotate(${tickRot}deg)`;
   return dirty || activeFlashes.length > 0 || routes.length > 0;
 }, [workerLayer, nodeLayer, edgeLayer, uiLayer]);
 anim.start();
@@ -2328,6 +2353,7 @@ const VISUAL_TYPES = [
       uiLayer.find('.slot').forEach(s => {
         const occupied = s.routeRef && s.routeRef.workerId;
         s.findOne('Rect')?.visible(vis && !occupied);
+        if (!vis) s.findOne('.slot-label')?.visible(false);
       });
       uiLayer.batchDraw();
     }
@@ -2456,7 +2482,7 @@ function clearRevealGhosts() {
 
 // Hover reveal depth — both pile hover and worker hover push ViewHoverReveal.
 let workerHoverDepth = 0;
-function enterWorkerHover() { workerHoverDepth++; if (workerHoverDepth === 1) pushViewFocus('ViewHoverReveal'); }
+function enterWorkerHover() { workerHoverDepth++; if (workerHoverDepth === 1) pushViewFocus('ViewGhost'); }
 function exitWorkerHover()  { if (workerHoverDepth === 0) return; workerHoverDepth--; if (workerHoverDepth === 0) popViewFocus(); }
 
 function applyDebugVisibility() {
@@ -2482,6 +2508,11 @@ function applyDebugVisibility() {
     const vis = VIEW_MODES.ViewGhost.visible;
     VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
     buildRevealGhosts();
+    uiLayer.find('.slot').forEach(s => {
+      const lbl = s.findOne('.slot-label');
+      if (lbl && s.routeRef) { lbl.text(slotStatusText(s.routeRef)); lbl.visible(true); }
+    });
+    uiLayer.batchDraw();
     return;
   }
   clearRevealGhosts();
