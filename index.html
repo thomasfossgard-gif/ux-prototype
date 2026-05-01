@@ -23,7 +23,7 @@
   .tool-btn { width: 48px; height: 48px; background: #2c313c; border: none; color: #ccc; cursor: pointer; border-radius: 6px; font-size: 11px; padding: 4px; line-height: 1.1; }
   .tool-btn.active { background: #4a90e2; color: #fff; }
   .tool-btn:hover:not(.active) { background: #3a4150; }
-  #canvas-container { position: relative; background: #0f1115; overflow: hidden; }
+  #canvas-container { position: relative; background: #a0a0a0; overflow: hidden; }
   #canvas { width: 100%; height: 100%; }
   #property-window { position: absolute; top: 110px; right: 12px; width: 240px; background: #232730; border: 1px solid #444; border-radius: 8px; padding: 12px; z-index: 10; }
   #property-window h3 { font-size: 12px; margin-bottom: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -37,7 +37,7 @@
   #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
   #confirm-dialog button:hover { background: #4a90e2; }
   .hint { position: absolute; bottom: 12px; left: 12px; color: #555; font-size: 12px; max-width: 360px; line-height: 1.5; pointer-events: none; }
-  #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(255,255,255,0.2); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
+  #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(255,255,255,0.08); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
   #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: 12px; z-index: 10; }
   #meta-controls { background: #232730; border: 1px solid #333; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; flex-shrink: 0; }
   #meta-controls-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #2a2d35; }
@@ -47,7 +47,7 @@
   #meta-controls-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
   #meta-controls-body[hidden] { display: none; }
   .meta-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  #meta-reload-btn { background: #2c313c; border: 1px solid #444; border-radius: 6px; color: rgba(255,255,255,0.5); font-size: 18px; cursor: pointer; padding: 3px 10px; line-height: 1; transition: color 0.2s, background 0.2s, border-color 0.2s; }
+  #meta-reload-btn { background: #2c313c; border: 1px solid #444; border-radius: 6px; color: rgba(255,255,255,0.08); font-size: 18px; cursor: pointer; padding: 3px 10px; line-height: 1; transition: color 0.2s, background 0.2s, border-color 0.2s; }
   #meta-reload-btn:hover { color: rgba(255,255,255,0.9); background: #3a4150; }
   #meta-reload-btn.has-update { background: rgba(255,200,80,0.15); border-color: rgba(255,200,80,0.5); color: rgba(255,200,80,0.9); }
   #meta-reload-btn.has-update:hover { background: rgba(255,200,80,0.3); border-color: rgba(255,200,80,0.9); }
@@ -230,7 +230,7 @@
             <button id="meta-reload-btn" title="Reload page">↻</button>
             <button id="btn-save-default" class="meta-btn">Save Default</button>
             <button id="btn-load-default" class="meta-btn">Load Default</button>
-            <button id="btn-inspect-tool" class="meta-btn" title="Inspect: click any object to edit its properties" style="font-size:16px;padding:3px 8px">⚙</button>
+            <button id="btn-inspect-tool" class="meta-btn" title="Inspect: click any object to edit its properties">Property Editor</button>
           </div>
           <div class="meta-row">
             <button id="btn-set-checkpoint" class="meta-btn">Set Checkpoint</button>
@@ -362,13 +362,14 @@ const VIEW_MODES = {
   ViewHoverReveal: { display: 'Hover Reveal',  visible: {}, readonly: true },
 };
 const VIS_STATES = ['visible', 'hidden', 'highlighted']; // cycle order on toggle
+const COG_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><text y="20" font-size="20">⚙</text></svg>')}") 12 12, auto`;
 const MODES = {
   gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default',     view: 'ViewDefault' },
   drawRoutes:   { display: 'Draw Routes',   tool: 'line',    cursor: 'crosshair',   view: 'ViewRoutes' },
   addItems:     { display: 'Add Items',     tool: 'addItem', cursor: 'copy',        view: 'ViewDefault' },
   deleteMode:   { display: 'Delete',        tool: 'delete',  cursor: 'not-allowed', view: 'ViewDefault' },
   liftWorker:   { display: 'Lift Worker',   tool: null,      cursor: 'grabbing',    view: 'ViewRoutes' },
-  inspectMode:  { display: 'Inspect',       tool: 'inspect', cursor: 'crosshair',   view: 'ViewDefault' },
+  inspectMode:  { display: 'Inspect',       tool: 'inspect', cursor: COG_CURSOR,    view: 'ViewDefault' },
 };
 const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', addItem: 'addItems', delete: 'deleteMode', inspect: 'inspectMode' };
 let currentMode = 'gameInteract';
@@ -569,10 +570,10 @@ function drawGrid() {
   const gy1 = Math.ceil(y1 / GRID) * GRID;
   const sw = 1 / scale; // keep grid lines 1px on screen
   for (let x = gx0; x <= gx1; x += GRID) {
-    gridLayer.add(new Konva.Line({ points: [x, gy0, x, gy1], stroke: '#1a1d23', strokeWidth: sw }));
+    gridLayer.add(new Konva.Line({ points: [x, gy0, x, gy1], stroke: 'rgba(255,255,255,0.08)', strokeWidth: sw }));
   }
   for (let y = gy0; y <= gy1; y += GRID) {
-    gridLayer.add(new Konva.Line({ points: [gx0, y, gx1, y], stroke: '#1a1d23', strokeWidth: sw }));
+    gridLayer.add(new Konva.Line({ points: [gx0, y, gx1, y], stroke: 'rgba(255,255,255,0.08)', strokeWidth: sw }));
   }
   gridLayer.batchDraw();
 }
@@ -837,12 +838,7 @@ function routeEndpoints(route) {
   const fn = nodes.find(n => n.id === route.fromId);
   const tn = nodes.find(n => n.id === route.toId);
   if (!fn || !tn) return null;
-  const dx = tn.x - fn.x, dy = tn.y - fn.y;
-  const len = Math.sqrt(dx*dx + dy*dy) || 1;
-  const ux = dx/len, uy = dy/len;
-  const from = { x: fn.x + ux*22, y: fn.y + uy*22 };
-  const to   = { x: tn.x - ux*22, y: tn.y - uy*22 };
-  return { fn, tn, from, to };
+  return { fn, tn, from: { x: fn.x, y: fn.y }, to: { x: tn.x, y: tn.y } };
 }
 // Snap target while drafting a route. Hits the closest anchor on any pile other than the source,
 // either directly (small radius around the anchor) or via the pile body (snap to closest anchor).
@@ -964,7 +960,7 @@ function updateNodeStack(node) {
     const y = -32 - i * 18;
     stack.add(new Konva.RegularPolygon({
       x: -7, y, sides: 3, radius: 6,
-      fill: color, stroke: 'rgba(255,255,255,0.5)', strokeWidth: 0.8, listening: false,
+      fill: color, stroke: 'rgba(255,255,255,0.08)', strokeWidth: 0.8, listening: false,
     }));
     stack.add(new Konva.Text({
       x: 2, y: y - 5, text: String(count),
@@ -1020,7 +1016,7 @@ function drawWorker(w) {
   // Visible while lifting (follows cursor) and while the worker is walking toward its commanded target.
   const ghostBody = new Konva.Rect({
     x: -S, y: -S, width: S*2, height: S*2, cornerRadius: 6,
-    fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.5)', strokeWidth: 1.5,
+    fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1.5,
     listening: false,
   });
   const ghostGrp = new Konva.Group({
