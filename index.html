@@ -375,7 +375,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#32';
+const APP_VERSION = '0.1.2#34';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -2918,6 +2918,7 @@ document.getElementById('btn-load-level').addEventListener('click', uploadLevel)
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
+const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-01T21:08:40.700Z","stage":{"x":0,"y":0,"scale":1},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i4","templateId":"oA","x":680,"y":520,"color":"#2f6fd6","items":16,"shape":"rect","label":"","scrap":{"wood":7,"steel":5,"plastic":4}},{"id":"i5","templateId":"oA","x":880,"y":400,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":{}}],"routes":[],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":720,"y":280,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":600,"y":320,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i3","templateId":"wC","color":"#f1c40f","capacity":3,"x":560,"y":400,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewRoutes":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}},"ViewGhost":{"visible":{"workers":"visible","workerLabels":"hidden","piles":"visible","pileItems":"hidden","routes":"hidden","routeSlots":"hidden","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workers":"visible","workerLabels":"visible","piles":"visible","pileItems":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":6,"routeColorIdx":0};
 let metaOpen = true;
 
 function toggleMetaControls() {
@@ -2942,8 +2943,13 @@ function setMetaStatus(msg, ok) {
 
 function saveDefault() {
   try {
-    localStorage.setItem(DEFAULT_SAVE_KEY, JSON.stringify(serializeLevel()));
-    setMetaStatus('Saved.', true);
+    const data = serializeLevel();
+    localStorage.setItem(DEFAULT_SAVE_KEY, JSON.stringify(data));
+    const snippet = 'const BUNDLED_LEVEL = ' + JSON.stringify(data) + ';';
+    navigator.clipboard.writeText(snippet).then(
+      () => setMetaStatus('Saved. Embed snippet copied to clipboard.', true),
+      () => setMetaStatus('Saved. (Clipboard unavailable — ask Claude to embed.)', true)
+    );
   } catch (e) {
     setMetaStatus('Save failed.', false);
   }
@@ -3034,11 +3040,8 @@ renderPortraits();
 renderPalette();
 applyMode();
 
-// On deployed version only: silently load the default save if one exists.
-if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1' && location.protocol !== 'file:') {
-  const _raw = localStorage.getItem(DEFAULT_SAVE_KEY);
-  if (_raw) { try { loadLevelData(JSON.parse(_raw)); } catch (_) {} }
-}
+// Load bundled level if one has been embedded (works for all visitors on any device).
+if (BUNDLED_LEVEL) { try { loadLevelData(BUNDLED_LEVEL); } catch (_) {} }
 </script>
 </body>
 </html>
