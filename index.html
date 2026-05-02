@@ -363,7 +363,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#75';
+const APP_VERSION = '0.1.2#76';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -2414,7 +2414,7 @@ Object.keys(VIEW_MODES).forEach(viewKey => {
 });
 
 // Persistence — save edits across reloads.
-const VIEW_MODES_STORAGE_KEY = 'uxprototype.viewModes.v2';
+const VIEW_MODES_STORAGE_KEY = 'uxprototype.viewModes.v3';
 function saveViewModes() {
   try {
     const data = {};
@@ -2561,6 +2561,8 @@ function applyDebugVisibility() {
         rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true);
         const lbl = slotGrp.findOne('.slot-label');
         if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); }
+        slotGrp.findOne('.slot-gear')?.visible(true);
+        ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => slotGrp.findOne(n)?.visible(true));
       }
     });
     edgeLayer.batchDraw();

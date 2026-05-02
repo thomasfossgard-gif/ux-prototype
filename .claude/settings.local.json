@@ -17,7 +17,10 @@
       "mcp__Claude_in_Chrome__read_console_messages",
       "mcp__Claude_in_Chrome__javascript_tool",
       "Bash(grep -v \"BUNDLED_LEVEL\\\\|//.*checkpoint\\\\|//.*restore\")",
-      "Bash(grep -v \"BUNDLED\\\\|//\")"
+      "Bash(grep -v \"BUNDLED\\\\|//\")",
+      "mcp__Claude_in_Chrome__select_browser",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -v \"BUNDLED_LEVEL\\\\|icon_worker\\\\|icon_pick\\\\|//.*icon\")"
     ]
   },
   "statusLine": {

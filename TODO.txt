@@ -4,3 +4,9 @@ TODO - UXPrototype
 [ ] Highlighting
 [ ] When clicking worker in portraits, should get into drag ghost mode [2026-05-02]
 [ ] Reposition and rewrite help text [2026-05-02]
+[ ] Workers getting bored and leaving for breaks and cigarettes [2026-05-02]
+[ ] Workers capacity fix [2026-05-02]
+[ ] Worker speed property [2026-05-02]
+[ ] Alcoholism [2026-05-02]
+[ ] Worker goes to source pile first [2026-05-02]
+[ ] Fix portrait scaling [2026-05-02]
