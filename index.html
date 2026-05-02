@@ -439,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#130';
+const APP_VERSION = '0.1.2#131';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -1932,7 +1932,7 @@ function ensureRouteSides(route) {
   const tn = nodes.find(n => n.id === route.toId);
   if (!fn || !tn) return;
   if (!route.fromSide) route.fromSide = closestSideTo(fn, tn);
-  if (!route.toSide)   route.toSide   = closestSideTo(fn, tn);
+  if (!route.toSide)   route.toSide   = closestSideTo(tn, fn);
 }
 function getPileAnchors(nodeId) {
   const node = nodes.find(n => n.id === nodeId);
@@ -2275,7 +2275,7 @@ stage.on('mousemove', () => {
   const p = getWorldPointer(); if (!p) return;
   let tx = p.x, ty = p.y;
   const hitNode = nodeAtPoint(p.x, p.y, lineDraft.fromNode.id);
-  if (hitNode) { tx = hitNode.x; ty = hitNode.y; }
+  if (hitNode) { const perim = pointOnPerimeter(hitNode, lineDraft.fromX, lineDraft.fromY); tx = perim.x; ty = perim.y; }
   lineDraft.path.data(orthoPathData(lineDraft.fromX, lineDraft.fromY, tx, ty));
   const ddx = tx - lineDraft.fromX, ddy = ty - lineDraft.fromY;
   const angle = Math.abs(ddy) < 1 ? (ddx >= 0 ? 0 : 180) : (ddy >= 0 ? 90 : -90);
