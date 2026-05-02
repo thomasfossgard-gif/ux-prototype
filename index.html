@@ -394,7 +394,7 @@
 const GRID = 40;
 const SCRAP_TYPES = [
   { id: 'wood',    label: 'Wood',    color: '#A0522D' },
-  { id: 'steel',   label: 'Steel',   color: '#FFFFFF' },
+  { id: 'steel',   label: 'Steel',   color: '#D0D0D0' },
   { id: 'plastic', label: 'Plastic', color: '#E879B9' },
 ];
 const defaultAllowedTypes = () => Object.fromEntries(SCRAP_TYPES.map(t => [t.id, true]));
@@ -409,7 +409,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#78';
+const APP_VERSION = '0.1.2#83';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -418,8 +418,8 @@ const APP_VERSION = '0.1.2#78';
 // from here so newly created shapes pick up edits too.
 const VISUAL_STYLES_DEFAULT = {
   worker: {
-    size: 28,
-    cornerRadius: 2,
+    size: 34,
+    cornerRadius: 5,
     strokeColor: 'rgba(255,255,255,0.35)',
     strokeWidth: 1.5,
     portraitZoom: 1.2,
@@ -505,6 +505,34 @@ const VISUAL_STYLES_DEFAULT = {
     borderWidth: 2,
     cornerRadius: 2,
   },
+  guiPanel: {
+    background: '#f3f1ed',
+    borderColor: '#1a1a1a',
+    borderWidth: 2,
+    cornerRadius: 12,
+    shadowColor: 'rgba(0,0,0,0.18)',
+    shadowBlur: 10,
+    ghostOpacity: 0.55,
+  },
+  routeFilter: {
+    triRadius: 14,
+    triSpacing: 36,
+    triStrokeWidth: 2,
+    padding: 10,
+    gapY: 8,
+    btnFontSize: 13,
+  },
+  scrapStack: {
+    radius: 5,
+    maxHeight: 54,
+    normalizeThreshold: 5,
+    naturalSpacing: 10,
+    columnSpacing: 14,
+    baseOffsetY: -36,
+    fill: 'rgba(255,255,255,0.25)',
+    stroke: 'rgba(255,255,255,0.4)',
+    strokeWidth: 1,
+  },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -557,6 +585,8 @@ function popViewFocus()       { viewFocusStack.pop();      applyDebugVisibility(
 // pile or starting a new route doesn't release it.
 let routeViewHeld = false;
 let recentlyCreatedRouteId = null;
+let _filterPanel = null;
+let _filterGhost = null;
 function holdRouteView(routeId) {
   if (routeViewHeld) return;
   routeViewHeld = true;
@@ -795,6 +825,7 @@ window.addEventListener('mousemove', e => {
   stage.batchDraw();
 });
 window.addEventListener('mouseup', () => {
+  cancelLineDraft();
   if (!panStart) return;
   panStart = null;
   containerEl.style.cursor = MODES[currentMode].cursor;
@@ -1508,6 +1539,7 @@ function startNodeMove(node, grp) {
     grp.position({ x: node.x, y: node.y });
     redrawRoutesTouching(node.id);
     nodeLayer.batchDraw();
+    if (getEffectiveView() === 'ViewHoverReveal' || getEffectiveView() === 'ViewGhost') buildRevealGhosts();
   };
   const onUp = () => {
     stage.off('mousemove.nodedrag');
@@ -1537,22 +1569,30 @@ function startLineDraft(fromNode) {
     listening: false,
   });
   const scrapPreview = new Konva.Group({ x: from.x, y: from.y, listening: false });
-  const counts = {};
-  (fromNode.scrap || []).forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
-  const entries = SCRAP_TYPES.map(t => [t, counts[t.id] || 0]).filter(([, c]) => c > 0);
-  entries.forEach(([tpl, count], i) => {
-    const y = -22 - i * 16;
-    scrapPreview.add(new Konva.RegularPolygon({
-      x: -7, y, sides: 3, radius: 6,
-      fill: 'rgba(255,255,255,0.25)', stroke: 'rgba(255,255,255,0.4)', strokeWidth: 1,
-      listening: false,
-    }));
-    scrapPreview.add(new Konva.Text({
-      x: 2, y: y - 5, text: count + '  ' + tpl.label,
-      fontSize: 10, fontFamily: 'system-ui, sans-serif',
-      fill: 'rgba(255,255,255,0.4)', fontStyle: 'bold', listening: false,
-    }));
-  });
+  {
+    const counts = {};
+    (fromNode.scrap || []).forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
+    const entries = SCRAP_TYPES.map(t => [t, counts[t.id] || 0]).filter(([, c]) => c > 0);
+    entries.sort((a, b) => b[1] - a[1]);
+    if (entries.length > 0) {
+      const VS = VISUAL_STYLES.scrapStack;
+      const maxCount = entries[0][1];
+      const spacing = maxCount <= VS.normalizeThreshold ? VS.naturalSpacing : VS.maxHeight / (maxCount - 1);
+      const totalW = (entries.length - 1) * VS.columnSpacing;
+      const startX = -totalW / 2;
+      entries.forEach(([tpl, count], col) => {
+        const cx = startX + col * VS.columnSpacing;
+        for (let i = count - 1; i >= 0; i--) {
+          scrapPreview.add(new Konva.RegularPolygon({
+            x: cx, y: VS.baseOffsetY - i * spacing, sides: 3, radius: VS.radius,
+            fill: i === 0 ? tpl.color : VS.fill,
+            stroke: VS.stroke, strokeWidth: VS.strokeWidth,
+            listening: false,
+          }));
+        }
+      });
+    }
+  }
   uiLayer.add(path, endA, endB, endBArrow, scrapPreview);
   lineDraft = { fromNode, fromX: from.x, fromY: from.y, path, endA, endB, endBArrow, scrapPreview, previewColor };
   pushViewFocus('ViewGhost');
@@ -1623,17 +1663,9 @@ stage.on('mouseup', () => {
 });
 
 function slotStatusText(route) {
-  if (!route.workerId) {
-    const allowed = route.allowedTypes || defaultAllowedTypes();
-    const enabled = SCRAP_TYPES.filter(t => allowed[t.id] !== false).map(t => t.label);
-    return 'No Worker' + (enabled.length ? '\n' + enabled.join('\n') : '');
-  }
+  if (!route.workerId) return 'No Worker';
   const w = workers.find(w => w.id === route.workerId);
-  if (!w) {
-    const allowed = route.allowedTypes || defaultAllowedTypes();
-    const enabled = SCRAP_TYPES.filter(t => allowed[t.id] !== false).map(t => t.label);
-    return 'No Worker' + (enabled.length ? '\n' + enabled.join('\n') : '');
-  }
+  if (!w) return 'No Worker';
   const tpl = palette.workers.find(t => t.id === w.templateId);
   const name = tpl ? tpl.name[0].toUpperCase() + tpl.name.slice(1) : 'Worker';
   const hasInventory = Object.values(w.inventory || {}).some(v => v > 0);
@@ -1647,14 +1679,69 @@ function slotStatusText(route) {
 }
 
 // ===== ROUTE HOVER (shared by route path and slot) =====
+function setSlotIconsVisible(route, visible) {
+  const slotGrp = uiLayer.findOne('#slot_' + route.id);
+  if (!slotGrp) return;
+  slotGrp.findOne('.slot-gear')?.visible(visible);
+  slotGrp.findOne('.slot-gearhit')?.visible(visible);
+  ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => slotGrp.findOne(n)?.visible(visible));
+  if (!visible) hideFilterGhost(route);
+  uiLayer.batchDraw();
+}
+
+function showFilterGhost(route) {
+  hideFilterGhost();
+  if (_filterPanel && _filterPanel.route.id === route.id) return;
+  const VGP = VISUAL_STYLES.guiPanel;
+  const VRF = VISUAL_STYLES.routeFilter;
+  const slotGrp = uiLayer.findOne('#slot_' + route.id);
+  if (!slotGrp) return;
+  const N = SCRAP_TYPES.length;
+  const pad = VRF.padding, triR = VRF.triRadius, spacing = VRF.triSpacing;
+  const panelW = pad * 2 + (N - 1) * spacing + triR * 2;
+  const panelH = pad + triR * 2 + VRF.gapY + VRF.btnFontSize + pad;
+  const slotHalf = VISUAL_STYLES.slotRect.size / 2;
+  const panelTop = -(panelH + slotHalf + 8);
+  const op = VGP.ghostOpacity;
+  const group = new Konva.Group({ x: slotGrp.x(), y: slotGrp.y(), opacity: op, listening: false, name: 'filter-ghost-panel' });
+  group.add(new Konva.Rect({
+    x: -panelW / 2, y: panelTop, width: panelW, height: panelH,
+    fill: VGP.background, stroke: VGP.borderColor, strokeWidth: VGP.borderWidth,
+    cornerRadius: VGP.cornerRadius, shadowColor: VGP.shadowColor, shadowBlur: VGP.shadowBlur, shadowOpacity: 1,
+    listening: false,
+  }));
+  const triY = panelTop + pad + triR;
+  const startX = -(N - 1) * spacing / 2;
+  SCRAP_TYPES.forEach((t, i) => {
+    group.add(new Konva.RegularPolygon({
+      x: startX + i * spacing, y: triY, sides: 3, radius: triR,
+      fill: route.allowedTypes[t.id] !== false ? t.color : 'transparent',
+      stroke: t.color, strokeWidth: VRF.triStrokeWidth, listening: false,
+    }));
+  });
+  _filterGhost = { group, route };
+  uiLayer.add(group);
+  uiLayer.batchDraw();
+}
+
+function hideFilterGhost(route) {
+  if (!_filterGhost) return;
+  if (route && _filterGhost.route.id !== route.id) return;
+  _filterGhost.group.destroy();
+  uiLayer.batchDraw();
+  _filterGhost = null;
+}
 function enterRouteHover(route) {
   if (route._hoverViewActive) return;
   route._hoverViewActive = true;
   pushViewFocus('ViewGhost');
+  setSlotIconsVisible(route, true);
 }
 function exitRouteHover(route) {
   if (!route._hoverViewActive) return;
+  if (_filterPanel && _filterPanel.route.id === route.id) return;
   route._hoverViewActive = false;
+  setSlotIconsVisible(route, false);
   popViewFocus();
 }
 
@@ -1752,12 +1839,19 @@ function drawSlotForRoute(route) {
     e.cancelBubble = true;
     deleteRoute(route);
   });
-  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit);
+  const gearHit = new Konva.Rect({
+    x: VSG.offsetX - _dPad, y: VSG.offsetY - _dPad,
+    width: VSG.fontSize + _dPad * 2, height: VSG.fontSize + _dPad * 2,
+    fill: 'transparent', name: 'slot-gearhit', visible: false,
+  });
+  gearHit.on('mouseenter', () => { clearTimeout(route._ghostTimer); showFilterGhost(route); });
+  gearHit.on('mouseleave', () => { route._ghostTimer = setTimeout(() => hideFilterGhost(route), 80); });
+  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
   grp.routeRef = route;
   grp.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
     e.cancelBubble = true;
-    openSlotPopup(route, e.evt.clientX, e.evt.clientY);
+    openRouteFilter(route);
   });
   grp.on('mouseenter', () => {
     clearTimeout(route._hoverTimer);
@@ -1786,6 +1880,8 @@ function redrawRoutesTouching(nodeId) {
       const wp = routeWaypoints(j);
       const mid = pointAtFraction(wp, 0.5);
       slot.position({ x: mid.x, y: mid.y });
+      if (_filterPanel && _filterPanel.route.id === j.id) _filterPanel.group.position({ x: mid.x, y: mid.y });
+      if (_filterGhost && _filterGhost.route.id === j.id) hideFilterGhost();
     }
   });
   edgeLayer.batchDraw();
@@ -1805,7 +1901,7 @@ function onRouteMouseDown(e, route) {
   }
   if (currentMode === 'gameInteract') {
     e.cancelBubble = true;
-    openSlotPopup(route, e.evt.clientX, e.evt.clientY);
+    openRouteFilter(route);
   }
 }
 
@@ -1957,6 +2053,8 @@ function deleteNode(node) {
   renderPalette();
 }
 function deleteRoute(route) {
+  if (_filterPanel && _filterPanel.route.id === route.id) closeRouteFilter(false);
+  exitRouteHover(route);
   if (route.workerId) {
     const w = workers.find(x => x.id === route.workerId);
     if (w) w.routeId = null;
@@ -2131,6 +2229,8 @@ function addInspectRow(container, label, type, value, min, max, onChange) {
 
 function refreshNodeItems(node) {
   node.items = (node.scrap || []).length;
+  const v = getEffectiveView();
+  if (v === 'ViewGhost' || v === 'ViewHoverReveal') buildRevealGhosts();
 }
 
 function addInspectScrapRow(container, scrapTpl, pileNode) {
@@ -2173,36 +2273,92 @@ function addInspectScrapRow(container, scrapTpl, pileNode) {
   container.appendChild(row);
 }
 
-function openSlotPopup(route, clientX, clientY) {
-  const popup = document.getElementById('slot-popup');
-  popup.innerHTML = '<h4>Carry filter</h4>';
-  SCRAP_TYPES.forEach(t => {
-    const row = document.createElement('label');
-    row.className = 'slot-popup-row';
-    const dot = document.createElement('div');
-    dot.className = 'slot-popup-dot';
-    dot.style.background = t.color;
-    const lbl = document.createElement('span');
-    lbl.className = 'slot-popup-label';
-    lbl.textContent = t.label;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = route.allowedTypes[t.id] !== false;
-    cb.onchange = () => { route.allowedTypes[t.id] = cb.checked; };
-    row.append(dot, lbl, cb);
-    popup.appendChild(row);
+function openRouteFilter(route) {
+  hideFilterGhost(route);
+  closeRouteFilter(false);
+  const VGP = VISUAL_STYLES.guiPanel;
+  const VRF = VISUAL_STYLES.routeFilter;
+  const slotGrp = uiLayer.findOne('#slot_' + route.id);
+  if (!slotGrp) return;
+
+  const N = SCRAP_TYPES.length;
+  const pad = VRF.padding, triR = VRF.triRadius, spacing = VRF.triSpacing, btnFS = VRF.btnFontSize;
+  const panelW = pad * 2 + (N - 1) * spacing + triR * 2;
+  const panelH = pad + triR * 2 + VRF.gapY + btnFS + pad;
+  const slotHalf = VISUAL_STYLES.slotRect.size / 2;
+  const panelTop = -(panelH + slotHalf + 8);
+
+  const draft = { ...route.allowedTypes };
+
+  const group = new Konva.Group({ x: slotGrp.x(), y: slotGrp.y(), name: 'route-filter-panel' });
+
+  group.add(new Konva.Rect({
+    x: -panelW / 2, y: panelTop, width: panelW, height: panelH,
+    fill: VGP.background, stroke: VGP.borderColor, strokeWidth: VGP.borderWidth,
+    cornerRadius: VGP.cornerRadius,
+    shadowColor: VGP.shadowColor, shadowBlur: VGP.shadowBlur, shadowOpacity: 1,
+    listening: false,
+  }));
+
+  const triY = panelTop + pad + triR;
+  const startX = -(N - 1) * spacing / 2;
+
+  const refreshTris = () => {
+    SCRAP_TYPES.forEach((t, i) => triShapes[i].fill(draft[t.id] !== false ? t.color : 'transparent'));
+    uiLayer.batchDraw();
+  };
+
+  const triShapes = SCRAP_TYPES.map((t, i) => {
+    const tri = new Konva.RegularPolygon({
+      x: startX + i * spacing, y: triY, sides: 3, radius: triR,
+      fill: draft[t.id] !== false ? t.color : 'transparent',
+      stroke: t.color, strokeWidth: VRF.triStrokeWidth,
+    });
+    tri.on('mousedown', e => {
+      e.cancelBubble = true;
+      _filterPanel.paintValue = draft[t.id] !== false ? false : true;
+      _filterPanel.painting = true;
+      draft[t.id] = _filterPanel.paintValue;
+      refreshTris();
+      const stop = () => { if (_filterPanel) _filterPanel.painting = false; window.removeEventListener('mouseup', stop); };
+      window.addEventListener('mouseup', stop);
+    });
+    tri.on('mouseenter', () => {
+      if (!_filterPanel?.painting) return;
+      draft[t.id] = _filterPanel.paintValue;
+      refreshTris();
+    });
+    return tri;
   });
-  const M = 8, W = 160;
-  let px = clientX + M;
-  if (px + W > window.innerWidth) px = clientX - W - M;
-  popup.style.left = Math.max(M, px) + 'px';
-  popup.style.top  = Math.max(M, clientY + M) + 'px';
-  popup.hidden = false;
-  // close on next outside click
-  setTimeout(() => {
-    const close = e => { if (!popup.contains(e.target)) { popup.hidden = true; document.removeEventListener('mousedown', close); } };
-    document.addEventListener('mousedown', close);
-  }, 0);
+  triShapes.forEach(s => group.add(s));
+
+  const btnRowY = panelTop + panelH - pad - btnFS;
+  const confirmX = panelW / 2 - pad - btnFS;
+  const cancelX  = confirmX - btnFS - 5;
+  const makeBtn = (text, x, onClick) => {
+    const btn = new Konva.Text({
+      text, fontSize: btnFS, fontFamily: 'system-ui, sans-serif', fill: VGP.borderColor,
+      x, y: btnRowY,
+    });
+    btn.on('mousedown', e => { e.cancelBubble = true; onClick(); });
+    return btn;
+  };
+  group.add(makeBtn('✓', confirmX, () => closeRouteFilter(true)));
+  group.add(makeBtn('✕', cancelX,  () => closeRouteFilter(false)));
+
+  _filterPanel = { group, route, draft, painting: false, paintValue: null };
+  uiLayer.add(group);
+  uiLayer.batchDraw();
+}
+
+function closeRouteFilter(confirm) {
+  if (!_filterPanel) return;
+  const { group, route, draft } = _filterPanel;
+  if (confirm) Object.assign(route.allowedTypes, draft);
+  group.destroy();
+  uiLayer.batchDraw();
+  _filterPanel = null;
+  exitRouteHover(route);
 }
 
 function closeInspectPanel() {
@@ -2419,16 +2575,23 @@ const anim = new Konva.Animation(frame => {
         }
         w.dir = -1; w.segIdx = 0; w.segT = 0;
       } else {
-        // Arrived at from-pile: pick up 1 allowed scrap
-        const pickType = SCRAP_TYPES.find(t => (route.allowedTypes || defaultAllowedTypes())[t.id] && (fn.scrap || []).some(p => p.type === t.id));
-        if (pickType) {
+        // Arrived at from-pile: pick up allowed scrap up to capacity
+        const allowed = route.allowedTypes || defaultAllowedTypes();
+        if (!w.inventory) w.inventory = {};
+        const carried = () => Object.values(w.inventory).reduce((a, b) => a + b, 0);
+        let pickedUp = false;
+        while (carried() < w.capacity) {
+          const pickType = SCRAP_TYPES.find(t => allowed[t.id] && (fn.scrap || []).some(p => p.type === t.id));
+          if (!pickType) break;
           const idx = fn.scrap.map(p => p.type).lastIndexOf(pickType.id);
           fn.scrap.splice(idx, 1);
-          if (!w.inventory) w.inventory = {};
           w.inventory[pickType.id] = (w.inventory[pickType.id] || 0) + 1;
+          animateScrapArc(fn.x, fn.y, w.x, w.y, pickType.id);
+          pickedUp = true;
+        }
+        if (pickedUp) {
           refreshNodeItems(fn);
           updateNodeStack(fn);
-          animateScrapArc(fn.x, fn.y, w.x, w.y, pickType.id);
           workerSay(w, 'Hup!');
           w.dir = 1; w.segIdx = 0; w.segT = 0;
         } else {
@@ -2518,7 +2681,6 @@ const VISUAL_TYPES = [
         ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => s.findOne(n)?.visible(vis));
         const del = s.findOne('.slot-del');
         if (del && !vis) del.opacity(0.3);
-        if (!vis) s.findOne('.slot-label')?.visible(false);
       });
       uiLayer.batchDraw();
     }
@@ -2631,19 +2793,26 @@ function buildRevealGhosts(includeRoutes = true) {
     const counts = {};
     (node.scrap || []).forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
     const entries = SCRAP_TYPES.map(t => [t, counts[t.id] || 0]).filter(([, c]) => c > 0);
-    entries.forEach(([tpl, count], i) => {
-      const y = nodeGrp.y() - 32 - i * 18;
-      revealLayer.add(new Konva.RegularPolygon({
-        x: nodeGrp.x() - 7, y, sides: 3, radius: 6,
-        fill: 'rgba(255,255,255,0.25)', stroke: 'rgba(255,255,255,0.4)', strokeWidth: 1,
-        listening: false,
-      }));
-      revealLayer.add(new Konva.Text({
-        x: nodeGrp.x() + 2, y: y - 5, text: count + '  ' + tpl.label,
-        fontSize: 10, fontFamily: 'system-ui, sans-serif',
-        fill: 'rgba(255,255,255,0.5)', fontStyle: 'bold', listening: false,
-      }));
-    });
+    entries.sort((a, b) => b[1] - a[1]);
+    if (entries.length > 0) {
+      const VS = VISUAL_STYLES.scrapStack;
+      const maxCount = entries[0][1];
+      const spacing = maxCount <= VS.normalizeThreshold ? VS.naturalSpacing : VS.maxHeight / (maxCount - 1);
+      const totalW = (entries.length - 1) * VS.columnSpacing;
+      const startX = nodeGrp.x() - totalW / 2;
+      entries.forEach(([tpl, count], col) => {
+        const cx = startX + col * VS.columnSpacing;
+        for (let i = count - 1; i >= 0; i--) {
+          const cy = nodeGrp.y() + VS.baseOffsetY - i * spacing;
+          revealLayer.add(new Konva.RegularPolygon({
+            x: cx, y: cy, sides: 3, radius: VS.radius,
+            fill: i === 0 ? tpl.color : VS.fill,
+            stroke: VS.stroke, strokeWidth: VS.strokeWidth,
+            listening: false,
+          }));
+        }
+      });
+    }
   });
   revealLayer.batchDraw();
 }
@@ -2692,8 +2861,6 @@ function applyDebugVisibility() {
         rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true);
         const lbl = slotGrp.findOne('.slot-label');
         if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); }
-        slotGrp.findOne('.slot-gear')?.visible(true);
-        ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => slotGrp.findOne(n)?.visible(true));
       }
     });
     edgeLayer.batchDraw();
@@ -3222,6 +3389,9 @@ const VS_TYPE_LABELS = {
   carryIndicator: 'Carry Indicator',
   speechBubble: 'Speech Bubble',
   tickIndicator: 'Tick Indicator',
+  guiPanel: 'GUI Panel',
+  routeFilter: 'Route Filter',
+  scrapStack: 'Scrap Stack',
 };
 const VS_OPEN_TYPES = new Set();
 
@@ -3673,6 +3843,13 @@ function applyVisualStyles(typeKey) {
     }
     case 'speechBubble':
       // Only affects new speech bubbles (they live ~1.5s) — no live shapes to retrofit.
+      break;
+    case 'scrapStack':
+      buildRevealGhosts();
+      break;
+    case 'guiPanel':
+    case 'routeFilter':
+      if (_filterPanel) { closeRouteFilter(false); }
       break;
     case 'tickIndicator': {
       const el = document.getElementById('tick-indicator');

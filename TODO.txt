@@ -10,3 +10,4 @@ TODO - UXPrototype
 [ ] Alcoholism [2026-05-02]
 [ ] Worker goes to source pile first [2026-05-02]
 [ ] Fix portrait scaling [2026-05-02]
+[ ] Rename view modes to "View Layers" (Physical, Virtual, UI, etc.) [2026-05-02]
