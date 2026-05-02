@@ -188,6 +188,7 @@
   .dbg-vis-btn.state-visible     { background: rgba(74,144,226,0.12); border-color: #4a90e2; color: #7ab4f5; }
   .dbg-vis-btn.state-hidden      { background: rgba(80,80,80,0.10);   border-color: #3a3d45; color: #777; }
   .dbg-vis-btn.state-highlighted { background: rgba(241,196,15,0.15); border-color: #f1c40f; color: #ffd95e; }
+  .dbg-vis-btn.state-inherit     { background: rgba(120,80,200,0.10); border-color: #6b47b8; color: #a78bfa; font-style: italic; }
   .dbg-inst-dot { color: #555; font-size: 9px; }
   .dbg-inst-dot.on { color: #4a90e2; }
   #debug-viewmodes-pane, #debug-options-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
@@ -439,7 +440,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#134';
+const APP_VERSION = '0.1.2#139';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -489,7 +490,6 @@ const VISUAL_STYLES_DEFAULT = {
     cornerRadius: 8,
   },
   miniAnchor: {
-    radius: 3,
     strokeColor: 'rgba(255,255,255,0.85)',
     strokeWidth: 2,
     stubLength: 12,
@@ -696,7 +696,7 @@ const VISUAL_STYLES_DEFAULT = {
   hitboxSlotIcons: {
     pad: 4,
   },
-  hitboxMiniAnchor: {},
+  hitboxMiniAnchor: { radius: 11 },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -724,7 +724,7 @@ const VIEW_MODES = {
   ViewGhost:       { display: 'View Ghost',    visible: {} },
   ViewHoverReveal: { display: 'Hover Reveal',  visible: {}, readonly: true },
 };
-const VIS_STATES = ['visible', 'hidden', 'highlighted']; // cycle order on toggle
+const VIS_STATES = ['visible', 'hidden', 'highlighted', 'inherit']; // 'inherit' only valid in contextual modes
 const COG_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><text y="20" font-size="20">⚙</text></svg>')}") 12 12, auto`;
 const MODES = {
   gameInteract: { display: 'Game Interact', tool: 'select',  cursor: 'default',     view: 'ViewDefault' },
@@ -806,6 +806,7 @@ function popTransientMode() {
 // the Route View visual mode. View-only — does NOT change the game mode.
 let pileFocusDepth = 0;
 let _hoveredNodeId = null;
+let _anchorHovered = false;
 function enterPileFocus() {
   pileFocusDepth++;
   if (pileFocusDepth === 1) pushViewFocus('ViewGhost');
@@ -1486,8 +1487,23 @@ function drawNode(node) {
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
   grp.on('mouseenter', () => { if (!lineDraft) { grpFocusPushed = true; _hoveredNodeId = node.id; enterPileFocus(); } });
   grp.on('mouseleave', () => { if (grpFocusPushed) { grpFocusPushed = false; _hoveredNodeId = null; leavePileFocus(); } });
-  anchorHit.on('mouseenter', () => enterPileFocus());
-  anchorHit.on('mouseleave', () => leavePileFocus());
+  anchorHit.on('mousedown', e => {
+    if (e.evt.button !== 0 || currentMode !== 'gameInteract') return;
+    e.cancelBubble = true;
+    startLineDraft(node);
+  });
+  anchorHit.on('mouseenter', () => {
+    _anchorHovered = true;
+    enterPileFocus();
+    const v = getEffectiveView();
+    if (v === 'ViewGhost' || v === 'ViewHoverReveal') buildRevealGhosts(false);
+  });
+  anchorHit.on('mouseleave', () => {
+    _anchorHovered = false;
+    leavePileFocus();
+    const v = getEffectiveView();
+    if (v === 'ViewGhost' || v === 'ViewHoverReveal') buildRevealGhosts(false);
+  });
   nodeLayer.add(grp);
   updateNodeStack(node);
   nodeLayer.batchDraw();
@@ -2186,12 +2202,8 @@ function onNodeMouseDown(e, node, grp) {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete pile?', () => deleteNode(node));
   } else if (currentMode === 'gameInteract') {
-    const p = getWorldPointer();
-    if (!p) return;
-    const dx = p.x - node.x, dy = p.y - node.y;
-    if (dx*dx + dy*dy > 11*11) return;
     e.cancelBubble = true;
-    startLineDraft(node);
+    startNodeMove(node, grp);
   }
 }
 function startNodeMove(node, grp) {
@@ -2422,7 +2434,7 @@ function makeMiniAnchor(route, isFromEnd) {
   const a = getPileAnchors(nodeId)[route.id] || { x: 0, y: 0 };
   const circle = new Konva.Circle({
     x: a.x, y: a.y,
-    radius: VMA.radius,
+    radius: VISUAL_STYLES.hitboxMiniAnchor.radius,
     stroke: VMA.strokeColor, strokeWidth: VMA.strokeWidth,
     fill: 'rgba(0,0,0,0.001)',
     name: 'mini-anchor' + (isFromEnd ? ' mini-anchor-from' : ' mini-anchor-to'),
@@ -3715,7 +3727,9 @@ let debugPreviewing = false; // true while the panel is overriding the live view
 function buildRevealGhosts(includeRoutes = true) {
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
-    if (!_hoveredNodeId || grp.id() === _hoveredNodeId) {
+    const isHovered = grp.id() === _hoveredNodeId;
+    const showDot = _anchorHovered || (!_hoveredNodeId || isHovered);
+    if (showDot) {
       revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
     }
   });
@@ -3771,6 +3785,14 @@ let workerHoverDepth = 0;
 function enterWorkerHover() { workerHoverDepth++; if (workerHoverDepth === 1) pushViewFocus('ViewGhost'); }
 function exitWorkerHover()  { if (workerHoverDepth === 0) return; workerHoverDepth--; if (workerHoverDepth === 0) popViewFocus(); }
 
+// Resolve the effective vis state for a type in a given view, following 'inherit'
+// back to ViewDefault. Returns 'visible' | 'hidden' | 'highlighted'.
+function resolveVisState(viewKey, typeKey) {
+  const state = VIEW_MODES[viewKey] && VIEW_MODES[viewKey].visible[typeKey];
+  if (!state || state === 'inherit') return VIEW_MODES.ViewDefault.visible[typeKey] || 'visible';
+  return state;
+}
+
 function applyDebugVisibility() {
   // The Debug → View Modes tab is purely about visual states. While the user is
   // previewing a specific view via the panel, that view drives the live display.
@@ -3795,8 +3817,7 @@ function applyDebugVisibility() {
     return;
   }
   if (view === 'ViewGhost') {
-    const vis = VIEW_MODES.ViewGhost.visible;
-    VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
+    VISUAL_TYPES.forEach(t => t.apply(resolveVisState('ViewGhost', t.key) !== 'hidden'));
     buildRevealGhosts(false);
     routes.forEach(route => {
       const routeGrp = edgeLayer.findOne('#' + route.id);
@@ -3814,9 +3835,8 @@ function applyDebugVisibility() {
     return;
   }
   clearRevealGhosts();
-  const vis = VIEW_MODES[view] && VIEW_MODES[view].visible;
-  if (!vis) return;
-  VISUAL_TYPES.forEach(t => t.apply(vis[t.key] !== 'hidden'));
+  if (!VIEW_MODES[view]) return;
+  VISUAL_TYPES.forEach(t => t.apply(resolveVisState(view, t.key) !== 'hidden'));
 }
 
 // Instance state catalog — drives the Instance States section. Each entry is a
@@ -3918,13 +3938,20 @@ function renderDebugPanel() {
         (layerLabel[type.layer] || type.layer) + '</td></tr>';
     }
     const instances = type.getInstances();
-    const state = vis[type.key] || 'visible'; // 'visible' | 'hidden' | 'highlighted'
-    const isVisibleish = (state !== 'hidden');
+    const state = vis[type.key] || 'visible'; // 'visible' | 'hidden' | 'highlighted' | 'inherit'
+    const resolvedState = resolveVisState(debugActiveView, type.key);
+    const isVisibleish = (resolvedState !== 'hidden');
     const isExpanded = expandedTypes.has(type.key);
     const canExpand = instances.length > 0;
     const expandIcon = canExpand ? (isExpanded ? '▾' : '▸') : '·';
     const cursorStyle = canExpand ? 'cursor:pointer' : 'cursor:default';
-    const stateLabel = state.charAt(0).toUpperCase() + state.slice(1);
+    const stateLabel = state === 'inherit'
+      ? 'Inherit (' + resolvedState.charAt(0).toUpperCase() + resolvedState.slice(1) + ')'
+      : state.charAt(0).toUpperCase() + state.slice(1);
+    const isDefault = (debugActiveView === 'ViewDefault');
+    const tooltip = isDefault
+      ? 'Click to cycle: visible → hidden'
+      : 'Click to cycle: visible → hidden → inherit (falls back to ViewDefault)';
 
     html +=
       '<tr class="dbg-type-row" data-action="expand" data-key="' + type.key + '" style="' + cursorStyle + '">' +
@@ -3932,7 +3959,7 @@ function renderDebugPanel() {
           ' <span class="dbg-count">(' + instances.length + ')</span></td>' +
         '<td class="dbg-vis-cell">' +
           '<button class="dbg-vis-btn state-' + state +
-            '" data-action="toggle" data-key="' + type.key + '" title="Click to cycle: visible → hidden → highlighted">' +
+            '" data-action="toggle" data-key="' + type.key + '" title="' + tooltip + '">' +
             stateLabel +
           '</button>' +
         '</td>' +
@@ -3978,10 +4005,14 @@ function toggleDebugExpand(typeKey) {
 function toggleDebugVis(typeKey) {
   const v = VIEW_MODES[debugActiveView];
   if (!v) return;
-  // Cycle: visible → hidden → highlighted → visible → ...
   const cur = v.visible[typeKey] || 'visible';
-  const idx = VIS_STATES.indexOf(cur);
-  v.visible[typeKey] = VIS_STATES[(idx + 1) % VIS_STATES.length];
+  // ViewDefault: 2-state toggle (visible ↔ hidden).
+  // Contextual modes: 3-state cycle (visible → hidden → inherit → visible).
+  const cycle = (debugActiveView === 'ViewDefault')
+    ? ['visible', 'hidden']
+    : ['visible', 'hidden', 'inherit'];
+  const idx = cycle.indexOf(cur);
+  v.visible[typeKey] = cycle[(idx + 1) % cycle.length];
   // Preview the change live if the panel's active view differs from the effective view.
   const effectiveView = viewFocusStack.length
     ? viewFocusStack[viewFocusStack.length - 1]
@@ -5007,9 +5038,13 @@ function applyVisualStyles(typeKey) {
       workerLayer.batchDraw();
       break;
     }
+    case 'hitboxMiniAnchor': {
+      stage.find('.mini-anchor').forEach(a => a.radius(V.radius));
+      edgeLayer.batchDraw();
+      break;
+    }
     case 'miniAnchor': {
       stage.find('.mini-anchor').forEach(a => {
-        a.radius(V.radius);
         a.stroke(V.strokeColor);
         a.strokeWidth(V.strokeWidth);
       });
