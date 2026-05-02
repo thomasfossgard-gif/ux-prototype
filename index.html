@@ -409,7 +409,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#83';
+const APP_VERSION = '0.1.2#86';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -448,6 +448,14 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 4,
     dashOn: 8,
     dashOff: 6,
+  },
+  miniAnchor: {
+    radius: 3,
+    strokeColor: 'rgba(255,255,255,0.85)',
+    strokeWidth: 2,
+    stubLength: 12,
+    rejectFlashColor: '#e63946',
+    rejectFlashDurationMs: 240,
   },
   slotRect: {
     size: 40,
@@ -587,6 +595,7 @@ let routeViewHeld = false;
 let recentlyCreatedRouteId = null;
 let _filterPanel = null;
 let _filterGhost = null;
+let _anchorDragState = null;
 function holdRouteView(routeId) {
   if (routeViewHeld) return;
   routeViewHeld = true;
@@ -1397,14 +1406,131 @@ function draftPathData(fromX, fromY, fromDir, toX, toY, stub = 18, radius = 14) 
 }
 
 // Route convenience wrappers — resolve endpoints + directions in one place.
+// ===== MINI-ANCHOR HELPERS =====
+function closestSideTo(node, other) {
+  const dx = other.x - node.x, dy = other.y - node.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+  return dy > 0 ? 'bottom' : 'top';
+}
+function sidePerp(side) {
+  if (side === 'right') return { x: 1, y: 0 };
+  if (side === 'left')  return { x: -1, y: 0 };
+  if (side === 'top')   return { x: 0, y: -1 };
+  return { x: 0, y: 1 }; // bottom
+}
+function ensureRouteSides(route) {
+  const fn = nodes.find(n => n.id === route.fromId);
+  const tn = nodes.find(n => n.id === route.toId);
+  if (!fn || !tn) return;
+  if (!route.fromSide) route.fromSide = closestSideTo(fn, tn);
+  if (!route.toSide)   route.toSide   = closestSideTo(tn, fn);
+}
+function getPileAnchors(nodeId) {
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return {};
+  const halfSize = VISUAL_STYLES.pileSquare.size / 2;
+  const sideRoutes = { right: [], left: [], top: [], bottom: [] };
+  routes.forEach(route => {
+    let isFrom, otherId;
+    if (route.fromId === nodeId) { isFrom = true;  otherId = route.toId; }
+    else if (route.toId === nodeId) { isFrom = false; otherId = route.fromId; }
+    else return;
+    ensureRouteSides(route);
+    const side = isFrom ? route.fromSide : route.toSide;
+    const other = nodes.find(n => n.id === otherId); if (!other) return;
+    const angle = Math.atan2(other.y - node.y, other.x - node.x);
+    sideRoutes[side].push({ route, angle, isFrom });
+  });
+  Object.values(sideRoutes).forEach(arr => arr.sort((a, b) => a.angle - b.angle));
+  const anchors = {};
+  Object.entries(sideRoutes).forEach(([side, arr]) => {
+    arr.forEach(({ route }, i) => {
+      const t = (i + 0.5) / arr.length;
+      const off = (t - 0.5) * 2 * halfSize;
+      let x, y;
+      if (side === 'right')       { x = node.x + halfSize; y = node.y + off; }
+      else if (side === 'left')   { x = node.x - halfSize; y = node.y + off; }
+      else if (side === 'top')    { x = node.x + off;      y = node.y - halfSize; }
+      else                        { x = node.x + off;      y = node.y + halfSize; }
+      anchors[route.id] = { x, y, side };
+    });
+  });
+  return anchors;
+}
+function getRouteAnchor(route, nodeId) {
+  if (_anchorDragState && _anchorDragState.route.id === route.id) {
+    const isFrom = _anchorDragState.isFromEnd;
+    if ((isFrom && nodeId === route.fromId) || (!isFrom && nodeId === route.toId)) {
+      return { x: _anchorDragState.x, y: _anchorDragState.y, side: _anchorDragState.side };
+    }
+  }
+  return getPileAnchors(nodeId)[route.id];
+}
+function pointOnPerimeter(node, mx, my) {
+  const halfSize = VISUAL_STYLES.pileSquare.size / 2;
+  const dx = mx - node.x, dy = my - node.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return {
+      x: node.x + Math.sign(dx || 1) * halfSize,
+      y: node.y + Math.max(-halfSize, Math.min(halfSize, dy)),
+      side: dx > 0 ? 'right' : 'left',
+    };
+  }
+  return {
+    x: node.x + Math.max(-halfSize, Math.min(halfSize, dx)),
+    y: node.y + Math.sign(dy || 1) * halfSize,
+    side: dy > 0 ? 'bottom' : 'top',
+  };
+}
+function countSideRoutes(nodeId, side, excludeRouteId) {
+  let n = 0;
+  routes.forEach(r => {
+    if (r.id === excludeRouteId) return;
+    if (r.fromId === nodeId && r.fromSide === side) n++;
+    else if (r.toId === nodeId && r.toSide === side) n++;
+  });
+  return n;
+}
+
+function buildRouteSegments(route) {
+  const fromAnchor = getRouteAnchor(route, route.fromId);
+  const toAnchor   = getRouteAnchor(route, route.toId);
+  if (!fromAnchor || !toAnchor) return null;
+  const stubLen = VISUAL_STYLES.miniAnchor.stubLength;
+  const fp = sidePerp(fromAnchor.side);
+  const tp = sidePerp(toAnchor.side);
+  const fStub = { x: fromAnchor.x + fp.x * stubLen, y: fromAnchor.y + fp.y * stubLen };
+  const tStub = { x: toAnchor.x   + tp.x * stubLen, y: toAnchor.y   + tp.y * stubLen };
+  const isFH = Math.abs(fp.x) > 0.5;
+  const isTH = Math.abs(tp.x) > 0.5;
+  const segs = [{ x: fromAnchor.x, y: fromAnchor.y }, fStub];
+  if (isFH && !isTH) {
+    segs.push({ x: tStub.x, y: fStub.y });
+  } else if (!isFH && isTH) {
+    segs.push({ x: fStub.x, y: tStub.y });
+  } else if (isFH) {
+    const midX = (fStub.x + tStub.x) / 2;
+    segs.push({ x: midX, y: fStub.y });
+    segs.push({ x: midX, y: tStub.y });
+  } else {
+    const midY = (fStub.y + tStub.y) / 2;
+    segs.push({ x: fStub.x, y: midY });
+    segs.push({ x: tStub.x, y: midY });
+  }
+  segs.push(tStub, { x: toAnchor.x, y: toAnchor.y });
+  return segs;
+}
+
 function routePathData(route) {
-  const ep = routeEndpoints(route); if (!ep) return '';
-  return orthoPathData(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+  const segs = buildRouteSegments(route);
+  if (!segs || segs.length < 2) return '';
+  let d = `M ${segs[0].x} ${segs[0].y}`;
+  for (let i = 1; i < segs.length; i++) d += ` L ${segs[i].x} ${segs[i].y}`;
+  return d;
 }
 
 function routeWaypoints(route) {
-  const ep = routeEndpoints(route); if (!ep) return [];
-  return orthoWaypoints(ep.from.x, ep.from.y, ep.to.x, ep.to.y);
+  return buildRouteSegments(route) || [];
 }
 
 // ===== ORTHOGONAL PATH (single-bend L with rounded corner) =====
@@ -1746,9 +1872,113 @@ function exitRouteHover(route) {
 }
 
 // ===== ROUTE RENDER =====
+function makeMiniAnchor(route, isFromEnd) {
+  const VMA = VISUAL_STYLES.miniAnchor;
+  const nodeId = isFromEnd ? route.fromId : route.toId;
+  const a = getPileAnchors(nodeId)[route.id] || { x: 0, y: 0 };
+  const circle = new Konva.Circle({
+    x: a.x, y: a.y,
+    radius: VMA.radius,
+    stroke: VMA.strokeColor, strokeWidth: VMA.strokeWidth,
+    fill: 'rgba(0,0,0,0.001)',
+    name: 'mini-anchor' + (isFromEnd ? ' mini-anchor-from' : ' mini-anchor-to'),
+    visible: false,
+  });
+  circle.on('mouseenter', () => { containerEl.style.cursor = 'grab'; });
+  circle.on('mouseleave', () => { if (!_anchorDragState) containerEl.style.cursor = MODES[currentMode].cursor; });
+  circle.on('mousedown', e => {
+    if (currentMode !== 'gameInteract') return;
+    if (e.evt.button !== 0) return;
+    e.cancelBubble = true;
+    startMiniAnchorDrag(route, isFromEnd, circle);
+  });
+  return circle;
+}
+
+function flashAnchorReject(circle) {
+  const VMA = VISUAL_STYLES.miniAnchor;
+  const orig = circle.stroke();
+  circle.stroke(VMA.rejectFlashColor);
+  edgeLayer.batchDraw();
+  setTimeout(() => { circle.stroke(orig); edgeLayer.batchDraw(); }, VMA.rejectFlashDurationMs);
+}
+
+function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
+  const nodeId = isFromEnd ? route.fromId : route.toId;
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const original = getPileAnchors(nodeId)[route.id];
+  if (!original) return;
+  _anchorDragState = {
+    route, isFromEnd, nodeId, node, anchorShape,
+    originalSide: isFromEnd ? route.fromSide : route.toSide,
+    x: original.x, y: original.y, side: original.side,
+  };
+  containerEl.style.cursor = 'grabbing';
+
+  const onMove = () => {
+    if (!_anchorDragState) return;
+    const p = getWorldPointer(); if (!p) return;
+    const proj = pointOnPerimeter(node, p.x, p.y);
+    _anchorDragState.x = proj.x;
+    _anchorDragState.y = proj.y;
+    _anchorDragState.side = proj.side;
+    anchorShape.position({ x: proj.x, y: proj.y });
+    const grp = edgeLayer.findOne('#' + route.id);
+    if (grp) {
+      const pd = routePathData(route);
+      grp.findOne('.routepath')?.data(pd);
+      grp.findOne('.hitbox-route')?.data(pd);
+      grp.findOne('.hover-hit-route')?.data(pd);
+    }
+    const wp = routeWaypoints(route);
+    if (wp.length) {
+      const mid = pointAtFraction(wp, 0.5);
+      const slot = uiLayer.findOne('#slot_' + route.id);
+      if (slot) slot.position({ x: mid.x, y: mid.y });
+    }
+    edgeLayer.batchDraw();
+    uiLayer.batchDraw();
+  };
+
+  const cleanup = () => {
+    stage.off('mousemove.anchordrag');
+    stage.off('mouseup.anchordrag');
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  const onUp = () => {
+    if (!_anchorDragState) { cleanup(); return; }
+    const newSide = _anchorDragState.side;
+    const original = _anchorDragState.originalSide;
+    let rejected = false;
+    if (newSide !== original) {
+      const sideCount = countSideRoutes(nodeId, newSide, route.id);
+      if (sideCount >= 4) {
+        rejected = true;
+      } else {
+        if (isFromEnd) route.fromSide = newSide;
+        else           route.toSide   = newSide;
+      }
+    }
+    const shape = _anchorDragState.anchorShape;
+    _anchorDragState = null;
+    containerEl.style.cursor = MODES[currentMode].cursor;
+    if (rejected) flashAnchorReject(shape);
+    redrawRoutesTouching(route.fromId);
+    if (route.fromId !== route.toId) redrawRoutesTouching(route.toId);
+    cleanup();
+  };
+
+  stage.on('mousemove.anchordrag', onMove);
+  stage.on('mouseup.anchordrag', onUp);
+  window.addEventListener('mouseup', onUp);
+}
+
 function drawRoute(route) {
   const ep = routeEndpoints(route);
   if (!ep) return;
+  ensureRouteSides(route);
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const VR = VISUAL_STYLES.route;
   const path = new Konva.Path({
@@ -1767,7 +1997,9 @@ function drawRoute(route) {
     stroke: route.color, strokeWidth: 28, lineCap: 'round',
     opacity: 0.001, name: 'hover-hit-route',
   });
-  grp.add(path, hitbox, hoverHit);
+  const fromAnchor = makeMiniAnchor(route, true);
+  const toAnchor   = makeMiniAnchor(route, false);
+  grp.add(path, hitbox, hoverHit, fromAnchor, toAnchor);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
   grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); enterRouteHover(route); });
   grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => exitRouteHover(route), 0); });
@@ -1875,6 +2107,12 @@ function redrawRoutesTouching(nodeId) {
     if (rhb) rhb.data(routePathData(j));
     const hhit = grp.findOne('.hover-hit-route');
     if (hhit) hhit.data(routePathData(j));
+    const fromA = getRouteAnchor(j, j.fromId);
+    const toA   = getRouteAnchor(j, j.toId);
+    const fromCircle = grp.findOne('.mini-anchor-from');
+    const toCircle   = grp.findOne('.mini-anchor-to');
+    if (fromA && fromCircle) fromCircle.position({ x: fromA.x, y: fromA.y });
+    if (toA && toCircle)     toCircle.position({ x: toA.x, y: toA.y });
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
       const wp = routeWaypoints(j);
@@ -2843,9 +3081,12 @@ function applyDebugVisibility() {
     if (debugOpen) renderDebugPanel();
   }
   const view = debugPreviewing ? debugActiveView : effectiveView;
+  const showAnchors = (view === 'ViewGhost' || view === 'ViewHoverReveal');
+  edgeLayer.find('.mini-anchor').forEach(a => a.visible(showAnchors));
   if (view === 'ViewHoverReveal') {
     VISUAL_TYPES.forEach(t => t.apply(false));
     buildRevealGhosts();
+    edgeLayer.batchDraw();
     return;
   }
   if (view === 'ViewGhost') {
@@ -3389,6 +3630,7 @@ const VS_TYPE_LABELS = {
   carryIndicator: 'Carry Indicator',
   speechBubble: 'Speech Bubble',
   tickIndicator: 'Tick Indicator',
+  miniAnchor: 'Mini Anchor',
   guiPanel: 'GUI Panel',
   routeFilter: 'Route Filter',
   scrapStack: 'Scrap Stack',
@@ -3844,6 +4086,23 @@ function applyVisualStyles(typeKey) {
     case 'speechBubble':
       // Only affects new speech bubbles (they live ~1.5s) — no live shapes to retrofit.
       break;
+    case 'miniAnchor': {
+      stage.find('.mini-anchor').forEach(a => {
+        a.radius(V.radius);
+        a.stroke(V.strokeColor);
+        a.strokeWidth(V.strokeWidth);
+      });
+      // Stub length affects path geometry — re-path all routes
+      routes.forEach(j => {
+        const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
+        const pd = routePathData(j);
+        grp.findOne('.routepath')?.data(pd);
+        grp.findOne('.hitbox-route')?.data(pd);
+        grp.findOne('.hover-hit-route')?.data(pd);
+      });
+      edgeLayer.batchDraw();
+      break;
+    }
     case 'scrapStack':
       buildRevealGhosts();
       break;
