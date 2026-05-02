@@ -86,12 +86,18 @@
   .gp-tab.active { color: #fff; border-bottom-color: #4a90e2; }
   #gp-content { flex: 1; overflow-y: auto; padding: 12px; }
   #gp-visuals-pane { flex: 1; overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
-  #gp-visuals-pane[hidden], #gp-content[hidden] { display: none; }
+  #gp-decorations-pane { flex: 1; overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
+  #gp-visuals-pane[hidden], #gp-decorations-pane[hidden], #gp-content[hidden] { display: none; }
   #vs-toolbar { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #1c1c1c; flex-shrink: 0; flex-wrap: wrap; }
   #vs-toolbar input { flex: 1; min-width: 0; background: #1e2028; border: 1px solid #333; color: #ddd; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
   #vs-toolbar button { padding: 4px 10px; background: #2c313c; border: 1px solid #444; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 11px; }
   #vs-toolbar button:hover { background: #3a4150; color: #fff; }
   #vs-list { flex: 1; overflow-y: auto; }
+  #dec-toolbar { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #1c1c1c; flex-shrink: 0; flex-wrap: wrap; }
+  #dec-toolbar input { flex: 1; min-width: 0; background: #1e2028; border: 1px solid #333; color: #ddd; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+  #dec-toolbar button { padding: 4px 10px; background: #2c313c; border: 1px solid #444; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 11px; }
+  #dec-toolbar button:hover { background: #3a4150; color: #fff; }
+  #dec-list { flex: 1; overflow-y: auto; }
   .vs-type-row { border-bottom: 1px solid #1c1c1c; }
   .vs-type-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; user-select: none; background: #2b2b2b; }
   .vs-type-header:hover { background: #353535; }
@@ -364,6 +370,7 @@
   <div id="gp-tab-bar">
     <button class="gp-tab active" data-gp-tab="gameplay">Gameplay</button>
     <button class="gp-tab" data-gp-tab="visuals">Visuals</button>
+    <button class="gp-tab" data-gp-tab="decorations">Decorations</button>
   </div>
   <div id="gp-content">
   </div>
@@ -375,6 +382,15 @@
       <button id="vs-reset-all" title="Reset every property to its default">Reset All</button>
     </div>
     <div id="vs-list"></div>
+  </div>
+  <div id="gp-decorations-pane" hidden>
+    <div id="dec-toolbar">
+      <input id="dec-search" type="text" placeholder="Filter…">
+      <button id="dec-save-code" title="Write current values into VISUAL_STYLES_DEFAULT in index.html (dev server only)">Save to Code</button>
+      <button id="dec-copy-all" title="Copy a Claude prompt describing every changed decoration property">Copy Prompt</button>
+      <button id="dec-reset-all" title="Reset every property to its default">Reset All</button>
+    </div>
+    <div id="dec-list"></div>
   </div>
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
@@ -416,7 +432,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#94';
+const APP_VERSION = '0.1.2#95';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -4044,14 +4060,17 @@ const VS_TYPE_LABELS = {
   tree: 'Tree',
 };
 const VS_OPEN_TYPES = new Set();
+const DECORATION_TYPES = new Set(['building', 'buildingDoor', 'buildingSupport', 'buildingChimney', 'buildingSign', 'tree']);
 
 function gpSwitchTab(tab) {
   gpActiveTab = tab;
   document.querySelectorAll('.gp-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.gpTab === tab));
   const showGameplay = tab === 'gameplay';
   document.getElementById('gp-content').hidden = !showGameplay;
-  document.getElementById('gp-visuals-pane').hidden = showGameplay;
-  if (!showGameplay) renderVisualsTab();
+  document.getElementById('gp-visuals-pane').hidden = tab !== 'visuals';
+  document.getElementById('gp-decorations-pane').hidden = tab !== 'decorations';
+  if (tab === 'visuals') renderVisualsTab();
+  else if (tab === 'decorations') renderDecorationsTab();
 }
 
 function vsIsColor(value) {
@@ -4116,6 +4135,7 @@ function renderVisualsTab() {
   if (!list) return;
   const filter = (document.getElementById('vs-search')?.value || '').trim().toLowerCase();
   const types = Object.keys(VS_TYPE_LABELS).filter(k => {
+    if (DECORATION_TYPES.has(k)) return false;
     if (!filter) return true;
     const label = VS_TYPE_LABELS[k].toLowerCase();
     return k.toLowerCase().includes(filter) || label.includes(filter);
@@ -4126,6 +4146,51 @@ function renderVisualsTab() {
       const key = hdr.dataset.type;
       if (VS_OPEN_TYPES.has(key)) VS_OPEN_TYPES.delete(key); else VS_OPEN_TYPES.add(key);
       renderVisualsTab();
+    });
+  });
+  list.querySelectorAll('[data-vs-action]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const action = btn.dataset.vsAction;
+      const typeKey = btn.dataset.type;
+      if (action === 'reset-type') vsResetType(typeKey);
+      else if (action === 'copy-type') vsCopyTypePrompt(typeKey);
+    });
+  });
+  list.querySelectorAll('.vs-prop-input').forEach(input => {
+    input.addEventListener('input', () => vsHandleInput(input));
+    input.addEventListener('change', () => vsHandleInput(input));
+  });
+  list.querySelectorAll('.vs-prop-color-swatch').forEach(input => {
+    input.addEventListener('input', () => vsHandleColorSwatch(input));
+  });
+  list.querySelectorAll('.vs-prop-opacity').forEach(slider => {
+    slider.addEventListener('input', () => vsHandleOpacity(slider));
+  });
+  list.querySelectorAll('.vs-prop-reset').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      vsResetProp(btn.dataset.type, btn.dataset.prop);
+    });
+  });
+}
+
+function renderDecorationsTab() {
+  const list = document.getElementById('dec-list');
+  if (!list) return;
+  const filter = (document.getElementById('dec-search')?.value || '').trim().toLowerCase();
+  const types = Object.keys(VS_TYPE_LABELS).filter(k => {
+    if (!DECORATION_TYPES.has(k)) return false;
+    if (!filter) return true;
+    const label = VS_TYPE_LABELS[k].toLowerCase();
+    return k.toLowerCase().includes(filter) || label.includes(filter);
+  });
+  list.innerHTML = types.map(typeKey => vsRenderTypeRow(typeKey)).join('');
+  list.querySelectorAll('.vs-type-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const key = hdr.dataset.type;
+      if (VS_OPEN_TYPES.has(key)) VS_OPEN_TYPES.delete(key); else VS_OPEN_TYPES.add(key);
+      renderDecorationsTab();
     });
   });
   list.querySelectorAll('[data-vs-action]').forEach(btn => {
@@ -4293,6 +4358,13 @@ function vsResetAll() {
   });
   renderVisualsTab();
 }
+function vsResetDecorationsAll() {
+  DECORATION_TYPES.forEach(k => {
+    Object.assign(VISUAL_STYLES[k], VISUAL_STYLES_DEFAULT[k]);
+    applyVisualStyles(k);
+  });
+  renderDecorationsTab();
+}
 
 function vsBuildPrompt(typeKeys) {
   const dirty = typeKeys.filter(k => vsTypeIsDirty(k));
@@ -4334,8 +4406,9 @@ async function vsCopyTypePrompt(typeKey) {
   await vsCopy(text);
   vsFlashToolbar('Copied prompt');
 }
-async function vsCopyAllPrompt() {
-  const text = vsBuildPrompt(Object.keys(VS_TYPE_LABELS));
+async function vsCopyAllPrompt(typeKeys) {
+  if (!typeKeys) typeKeys = Object.keys(VS_TYPE_LABELS);
+  const text = vsBuildPrompt(typeKeys);
   await vsCopy(text);
   vsFlashToolbar('Copied prompt');
 }
@@ -4657,6 +4730,10 @@ document.getElementById('vs-search').addEventListener('input', renderVisualsTab)
 document.getElementById('vs-copy-all').addEventListener('click', vsCopyAllPrompt);
 document.getElementById('vs-reset-all').addEventListener('click', vsResetAll);
 document.getElementById('vs-save-code').addEventListener('click', vsSaveToCode);
+document.getElementById('dec-search').addEventListener('input', renderDecorationsTab);
+document.getElementById('dec-copy-all').addEventListener('click', () => vsCopyAllPrompt(Array.from(DECORATION_TYPES)));
+document.getElementById('dec-reset-all').addEventListener('click', () => vsResetDecorationsAll());
+document.getElementById('dec-save-code').addEventListener('click', vsSaveToCode);
 // Tick indicator's initial visual comes from inline CSS — push current defaults so
 // changes to VISUAL_STYLES_DEFAULT.tickIndicator take effect without editing CSS.
 applyVisualStyles('tickIndicator');
