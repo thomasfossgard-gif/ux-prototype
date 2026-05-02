@@ -456,6 +456,16 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 1.5,
     cornerRadius: 6,
   },
+  physicsGhost: {
+    fill: 'rgba(255,255,255,0.18)',
+    strokeColor: 'rgba(255,255,255,0.5)',
+    strokeWidth: 1.5,
+    ropeColor: 'rgba(255,255,255,0.25)',
+    ropeWidth: 1.5,
+    ropeLength: 40,
+    gravity: 1.4,
+    damping: 0.86,
+  },
   pileSquare: {
     size: 44,
     cornerRadius: 0,
@@ -1658,7 +1668,7 @@ function drawWorker(w) {
       } else {
         const mx = (wx + cx2) / 2, my = (wy + cy2) / 2;
         const curve = Math.min(len * 0.25, 48);
-        pd = `M ${wx} ${wy} Q ${mx - dy/len*curve} ${my - dx/len*curve} ${cx2} ${cy2}`;
+        pd = `M ${wx} ${wy} Q ${mx - dy/len*curve} ${my - Math.abs(dx)/len*curve} ${cx2} ${cy2}`;
       }
       trail.data(pd);
       const visibleSlots = uiLayer.find('.slot').filter(s => s.findOne('Rect')?.visible());
@@ -3111,6 +3121,8 @@ const SPEED_PX_PER_SEC = 90;
 const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
 let routeDashOffset = 0;
 let tickRot = 0;
+let _dragPhysBob = null;       // { x, y, px, py, shape, rope } — active during tri drag
+const _dragPhysAnchor = { x: 0, y: 0 };
 const tickIndicatorEl = document.getElementById('tick-indicator');
 const anim = new Konva.Animation(frame => {
   const dt = Math.min(0.05, frame.timeDiff / 1000);
@@ -3249,6 +3261,30 @@ const anim = new Konva.Animation(frame => {
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
     uiLayer.find('.slot-rect').forEach(r => r.dashOffset(routeDashOffset));
     uiLayer.find('.drag-trail').forEach(p => p.dashOffset(routeDashOffset));
+  }
+  if (_dragPhysBob) {
+    const VG = VISUAL_STYLES.physicsGhost;
+    const dtNorm = Math.min(frame.timeDiff / 16.67, 3);
+    const vx = (_dragPhysBob.x - _dragPhysBob.px) * VG.damping;
+    const vy = (_dragPhysBob.y - _dragPhysBob.py) * VG.damping;
+    _dragPhysBob.px = _dragPhysBob.x;
+    _dragPhysBob.py = _dragPhysBob.y;
+    _dragPhysBob.x += vx;
+    _dragPhysBob.y += vy + VG.gravity * dtNorm;
+    // Rope constraint: pull bob back within ropeLength of anchor
+    const adx = _dragPhysBob.x - _dragPhysAnchor.x;
+    const ady = _dragPhysBob.y - _dragPhysAnchor.y;
+    const adist = Math.hypot(adx, ady) || 0.001;
+    if (adist > VG.ropeLength) {
+      const nx = adx / adist, ny = ady / adist;
+      _dragPhysBob.x = _dragPhysAnchor.x + nx * VG.ropeLength;
+      _dragPhysBob.y = _dragPhysAnchor.y + ny * VG.ropeLength;
+    }
+    const ws = VISUAL_STYLES.worker.size;
+    _dragPhysBob.shape.x(_dragPhysBob.x - ws / 2);
+    _dragPhysBob.shape.y(_dragPhysBob.y - ws / 2);
+    _dragPhysBob.rope.points([_dragPhysAnchor.x, _dragPhysAnchor.y, _dragPhysBob.x, _dragPhysBob.y]);
+    dirty = true;
   }
   tickRot += 360 * dt;
   tickIndicatorEl.style.transform = `rotate(${tickRot}deg)`;
@@ -4018,6 +4054,7 @@ const VS_TYPE_LABELS = {
   trafficLightMan: 'Traffic-Light Man',
   assignTriangle: 'Assign Triangle',
   dragPortrait: 'Drag Portrait',
+  physicsGhost: 'Physics Ghost',
   guiPanel: 'GUI Panel',
   routeFilter: 'Route Filter',
   scrapStack: 'Scrap Stack',
