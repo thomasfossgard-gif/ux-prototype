@@ -432,7 +432,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#95';
+const APP_VERSION = '0.1.2#104';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -512,6 +512,13 @@ const VISUAL_STYLES_DEFAULT = {
     offsetY: 6,
     bounceDist: 8,
     bounceDurationMs: 150,
+  },
+  dragPortrait: {
+    size: 32,
+    cornerRadius: 4,
+    strokeColor: '#ffffff',
+    strokeWidth: 2,
+    offsetY: 4,
   },
   slotRect: {
     size: 40,
@@ -635,11 +642,11 @@ const VISUAL_STYLES_DEFAULT = {
     offsetY: -37,
   },
   tree: {
-    canopyRadius: 30,
+    canopyRadius: 28,
     canopyColor: '#2d5016',
-    canopyHeight: 50,
-    trunkWidth: 8,
-    trunkHeight: 20,
+    canopyHeight: 40,
+    trunkWidth: 7,
+    trunkHeight: 15,
     trunkColor: '#654321',
   },
 };
@@ -655,7 +662,6 @@ let nodes = [];   // { id, templateId, x, y, color, items }
 let routes = [];  // { id, fromId, toId, color, workerId }
 let workers = []; // { id, templateId, color, capacity, x, y, routeId, inventory, noScrap, segIdx, segT, dir }
 let activeTab = 'objects';
-let selectedWorkerId = null;
 
 // ===== MODE SYSTEM =====
 // Two-layer system:
@@ -941,14 +947,6 @@ window.addEventListener('mouseup', () => {
   containerEl.style.cursor = MODES[currentMode].cursor;
 });
 
-// Deselect worker when clicking empty canvas in game interact mode.
-stage.on('click', e => {
-  if (e.evt.button !== 0) return;
-  if (e.target !== stage) return;
-  if (currentMode === 'gameInteract' && selectedWorkerId !== null) {
-    selectWorker(null);
-  }
-});
 
 // suppress browser context menu over canvas
 containerEl.addEventListener('contextmenu', e => e.preventDefault());
@@ -1243,6 +1241,17 @@ palette.workers.forEach(tpl => {
       node.cropWidth(cw);
       node.cropHeight(ch);
     });
+    // Fix crop on drag portraits drawn before this image loaded.
+    workerLayer.find('.drag-portrait-img').forEach(node => {
+      const dpGrpNode = node.getParent();
+      const workerGrp = dpGrpNode && dpGrpNode.getParent();
+      const w = workerGrp && workers.find(ww => ww.id === workerGrp.id());
+      const wTpl = w && palette.workers.find(t => t.id === w.templateId);
+      if (!wTpl || wTpl.name !== tpl.name) return;
+      node.image(img);
+      node.cropX((img.naturalWidth - cw) / 2); node.cropY((img.naturalHeight - ch) / 2);
+      node.cropWidth(cw); node.cropHeight(ch);
+    });
     workerLayer.batchDraw();
   };
   img.src = `icons/icon_worker_${tpl.name}.png`;
@@ -1340,18 +1349,12 @@ function setPileState(node, key, value) {
   applyPileState(node);
   nodeLayer.batchDraw();
 }
-function applyWorkerState(w) {
-  const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
-  grp.findOne('.selection-ring')?.visible(!!(w.states?.selected));
-}
 function refreshAllWorkers() {
-  workers.forEach(applyWorkerState);
   workerLayer.batchDraw();
 }
 function redrawAllWorkers() {
   workers.forEach(w => {
     workerLayer.findOne('#' + w.id)?.destroy();
-    workerLayer.findOne('#ghost_' + w.id)?.destroy();
     drawWorker(w);
   });
   refreshAllWorkers();
@@ -1471,7 +1474,7 @@ function placeWorker(tpl, x, y) {
     x: x, y: y, routeId: null, inventory: {}, noScrap: false,
     segIdx: 0, segT: 0, dir: 1,
     targetX: null, targetY: null,
-    states: { selected: false, lifting: false },
+    states: { lifting: false },
   };
   workers.push(w);
   drawWorker(w);
@@ -1482,7 +1485,7 @@ function drawWorker(w) {
   const name = tpl?.name ?? '';
   const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
 
-  const VW = VISUAL_STYLES.worker, VG = VISUAL_STYLES.workerGhost, VC = VISUAL_STYLES.carryIndicator;
+  const VW = VISUAL_STYLES.worker, VC = VISUAL_STYLES.carryIndicator;
   const VA = VISUAL_STYLES.assignTriangle;
   const VT = VISUAL_STYLES.trafficLightMan;
 
@@ -1503,15 +1506,7 @@ function drawWorker(w) {
   figure.listening(false);
   grp.add(figure);
 
-  // Selection ring — white outline when selected
   const ringPad = 4;
-  const selRing = new Konva.Rect({
-    x: -(figHalfW + ringPad), y: -(figHalfH + ringPad),
-    width: (figHalfW + ringPad) * 2, height: _totalH + ringPad * 2,
-    cornerRadius: 5, stroke: 'rgba(255,255,255,0.85)', strokeWidth: 2,
-    fillEnabled: false, listening: false, name: 'selection-ring', visible: false,
-  });
-  grp.add(selRing);
 
   // Carry indicators
   const carry = new Konva.Group({ y: VC.offsetY, name: 'carry', listening: false });
@@ -1547,6 +1542,33 @@ function drawWorker(w) {
   tri._restY = triRestY;
   grp.add(tri);
 
+  // Drag portrait — shown below the assign-triangle tip while drag-to-assign is active
+  const VDP = VISUAL_STYLES.dragPortrait;
+  const dpGrp = new Konva.Group({ x: 0, y: 0, name: 'drag-portrait-grp', visible: false, listening: false });
+  dpGrp.add(new Konva.Rect({
+    x: -VDP.size/2, y: 0, width: VDP.size, height: VDP.size,
+    cornerRadius: VDP.cornerRadius, fill: tpl?.color || '#888',
+    stroke: VDP.strokeColor, strokeWidth: VDP.strokeWidth,
+    listening: false, name: 'drag-portrait-bg',
+  }));
+  if (name) {
+    const portrait = WORKER_PORTRAITS[name];
+    const dpImg = new Konva.Image({
+      x: -VDP.size/2, y: 0, width: VDP.size, height: VDP.size,
+      cornerRadius: VDP.cornerRadius, image: portrait || null,
+      listening: false, name: 'drag-portrait-img',
+    });
+    if (portrait && portrait.naturalWidth) {
+      const zoom = VISUAL_STYLES.worker.portraitZoom;
+      const iw = portrait.naturalWidth, ih = portrait.naturalHeight;
+      const cw = iw / zoom, ch = ih / zoom;
+      dpImg.cropX((iw - cw) / 2); dpImg.cropY((ih - ch) / 2);
+      dpImg.cropWidth(cw); dpImg.cropHeight(ch);
+    }
+    dpGrp.add(dpImg);
+  }
+  grp.add(dpGrp);
+
   // Body hitbox — covers full figure, handles hover + click-to-select
   const ringPad2 = ringPad;
   const bodyHitbox = new Konva.Rect({
@@ -1567,7 +1589,6 @@ function drawWorker(w) {
 
   // Group hover — fires on entering either hitbox from outside the group
   grp.on('mouseenter', () => {
-    containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer";
     w.states.hovered = true;
     if (!w.states._triDragging) { workerSay(w, 'hm?'); enterWorkerHover(); tri.visible(true); bounceAssignTriangle(tri); }
     workerLayer.batchDraw();
@@ -1578,17 +1599,11 @@ function drawWorker(w) {
     if (!w.states._triDragging) { exitWorkerHover(); tri.visible(false); workerLayer.batchDraw(); }
   });
 
-  // Body: click to select (middle-click to inspect panel; respect other modes)
-  bodyHitbox.on('mousedown', e => {
-    if (e.evt.button === 1) { e.evt.preventDefault(); showWorkerInGpPanel(w); return; }
-    e.cancelBubble = true;
-    if (currentMode === 'inspectMode') { openInspectPanel('worker', w, e.evt.clientX, e.evt.clientY); return; }
-    if (currentMode === 'deleteMode') { showConfirm(e.evt.clientX, e.evt.clientY, 'Delete worker?', () => deleteWorker(w)); return; }
-    if (currentMode !== 'gameInteract') setMode('gameInteract');
-    selectWorker(w.id);
-  });
+  // Triangle hitbox: cursor change on hover
+  triHitbox.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; });
+  triHitbox.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
 
-  // Triangle hitbox: drag to assign worker to a route slot
+  // Triangle hitbox: drag to assign/move worker
   triHitbox.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
     if (e.evt.button !== 0) return;
@@ -1618,27 +1633,55 @@ function drawWorker(w) {
       uiLayer.batchDraw();
     };
 
+    const trail = new Konva.Path({
+      stroke: 'rgba(255,255,255,0.55)', strokeWidth: 3,
+      dash: [8, 6], dashOffset: routeDashOffset,
+      lineCap: 'butt', lineJoin: 'round', opacity: 0.85,
+      listening: false, name: 'drag-trail',
+    });
+    uiLayer.add(trail);
+
     const onTriMove = () => {
       const worldP = getWorldPointer(); if (!worldP) return;
       tri.x(worldP.x - grp.x());
       tri.y(worldP.y - grp.y() - VA.height);
+      const VDP2 = VISUAL_STYLES.dragPortrait;
+      dpGrp.x(tri.x());
+      dpGrp.y(tri.y() - VDP2.offsetY - VDP2.size);
+      // Update trail from worker origin to cursor
+      const wx = grp.x(), wy = grp.y();
+      const cx2 = worldP.x, cy2 = worldP.y;
+      const dx = cx2 - wx, dy = cy2 - wy, len = Math.hypot(dx, dy);
+      let pd;
+      if (len < 2) {
+        pd = `M ${wx} ${wy}`;
+      } else {
+        const mx = (wx + cx2) / 2, my = (wy + cy2) / 2;
+        const curve = Math.min(len * 0.25, 48);
+        pd = `M ${wx} ${wy} Q ${mx - dy/len*curve} ${my - dx/len*curve} ${cx2} ${cy2}`;
+      }
+      trail.data(pd);
       const visibleSlots = uiLayer.find('.slot').filter(s => s.findOne('Rect')?.visible());
       let best = null, bestD2 = 50 * 50;
       for (const s of visibleSlots) {
-        const dx = s.x() - worldP.x, dy = s.y() - worldP.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 < bestD2) { bestD2 = d2; best = s; }
+        const sdx = s.x() - worldP.x, sdy = s.y() - worldP.y;
+        if (sdx*sdx + sdy*sdy < bestD2) { bestD2 = sdx*sdx + sdy*sdy; best = s; }
       }
       _snapSlot = best;
       highlightSlot(best);
+      uiLayer.batchDraw();
       workerLayer.batchDraw();
     };
 
+    dpGrp.visible(true);
+
     const onTriUp = () => {
       stage.off('mousemove.tridrag'); stage.off('mouseup.tridrag');
+      trail.destroy();
       highlightSlot(null);
       w.states._triDragging = false;
       tri.x(0); tri.y(tri._restY); tri.visible(false);
+      dpGrp.visible(false); dpGrp.x(0); dpGrp.y(0);
       w.states.lifting = false;
       popTransientMode();
       if (_snapSlot) {
@@ -1649,13 +1692,16 @@ function drawWorker(w) {
         w.routeId = chosen.id;
         w.inventory = {}; w.noScrap = false;
         w.targetX = mid.x; w.targetY = mid.y;
-        showGhost(w, mid.x, mid.y);
         workerSay(w, 'Back to work!');
       } else {
-        hideGhost(w);
+        const worldP = getWorldPointer();
+        if (worldP) {
+          w.targetX = snap(worldP.x); w.targetY = snap(worldP.y);
+          workerSay(w, 'On my way!');
+        }
       }
       updateWorkerVisual(w);
-      selectWorker(w.id);
+      uiLayer.batchDraw();
       workerLayer.batchDraw();
     };
 
@@ -1665,41 +1711,6 @@ function drawWorker(w) {
 
   workerLayer.add(grp);
 
-  // Per-worker ghost — sized to match the figure bounds. Visible while lifting and while walking.
-  const _ghostHalfW = figHalfW + ringPad;
-  const _ghostHalfH = figHalfH + ringPad;
-  const ghostBody = new Konva.Rect({
-    x: -_ghostHalfW, y: -_ghostHalfH, width: _ghostHalfW * 2, height: _ghostHalfH * 2, cornerRadius: VG.cornerRadius,
-    fill: VG.fill, stroke: VG.strokeColor, strokeWidth: VG.strokeWidth,
-    listening: false, name: 'ghostbody',
-  });
-  const ghostGrp = new Konva.Group({
-    x: w.x, y: w.y, id: 'ghost_' + w.id, name: 'worker-ghost',
-    visible: false, listening: false,
-  });
-  ghostGrp.add(ghostBody);
-  workerLayer.add(ghostGrp);
-
-  workerLayer.batchDraw();
-}
-function showGhost(w, x, y) {
-  const g = workerLayer.findOne('#ghost_' + w.id);
-  if (!g) return;
-  g.position({ x, y });
-  g.visible(true);
-  g.moveToTop();
-  workerLayer.batchDraw();
-}
-function moveGhost(w, x, y) {
-  const g = workerLayer.findOne('#ghost_' + w.id);
-  if (!g) return;
-  g.position({ x, y });
-  workerLayer.batchDraw();
-}
-function hideGhost(w) {
-  const g = workerLayer.findOne('#ghost_' + w.id);
-  if (!g) return;
-  g.visible(false);
   workerLayer.batchDraw();
 }
 function workerSay(w, text) {
@@ -2590,7 +2601,6 @@ function onWorkerMouseDown(e, w, grp) {
     w.targetX = null; w.targetY = null; // cancel any pending walk-to-point
     if (!w.states) w.states = {};
     w.states.lifting = true;
-    showGhost(w, w.x, w.y); // ghost appears at worker's current spot
     pushTransientMode('liftWorker'); // applyDebugVisibility shows slots for unoccupied routes
   };
 
@@ -2601,19 +2611,11 @@ function onWorkerMouseDown(e, w, grp) {
       const dx = screenP.x - startP.x, dy = screenP.y - startP.y;
       if (dx*dx + dy*dy > 25) { entered = true; beginLift(); }
     }
-    if (entered) {
-      // Ghost is in workerLayer (world coords) — convert.
-      const wp = getWorldPointer();
-      if (wp) moveGhost(w, wp.x, wp.y);
-    }
+    if (entered) {}
   };
   const onUp = () => {
     stage.off('mousemove.wdrag'); stage.off('mouseup.wdrag');
-    if (!entered) {
-      // Click without drag → select this worker
-      selectWorker(w.id);
-      return;
-    }
+    if (!entered) return;
     const p = getWorldPointer();
     let chosen = null;
     if (p) {
@@ -2626,43 +2628,22 @@ function onWorkerMouseDown(e, w, grp) {
     if (w.states) w.states.lifting = false;
     popTransientMode();
     if (chosen) {
-      // Place ghost on the slot. Worker walks to slot, then snaps onto the route to begin shuttling.
-      const ep = routeEndpoints(chosen);
       const wp = routeWaypoints(chosen);
       const mid = pointAtFraction(wp, 0.5);
       chosen.workerId = w.id;
       w.routeId = chosen.id;
       w.inventory = {}; w.noScrap = false;
       w.targetX = mid.x; w.targetY = mid.y;
-      showGhost(w, mid.x, mid.y);
       workerSay(w, 'Back to work!');
     } else if (p) {
-      // Drop on empty space → command the worker to walk there. Ghost stays at drop point.
       w.targetX = snap(p.x); w.targetY = snap(p.y);
-      showGhost(w, w.targetX, w.targetY);
       workerSay(w, 'Alright');
-    } else {
-      hideGhost(w);
     }
     updateWorkerVisual(w);
-    selectWorker(w.id); // selection follows the lifted worker
   };
   stage.on('mousemove.wdrag', onMove);
   stage.on('mouseup.wdrag', onUp);
 }
-
-// ===== WORKER SELECTION =====
-function selectWorker(id) {
-  selectedWorkerId = id;
-  // Drive worker.states.selected, which applyWorkerState renders.
-  workers.forEach(w => {
-    if (!w.states) w.states = {};
-    w.states.selected = (w.id === id);
-  });
-  refreshAllWorkers();
-
-}
-
 
 function spawnInitialWorkers() {
   const positions = [{x:160,y:160},{x:160,y:240},{x:160,y:320}];
@@ -2672,7 +2653,7 @@ function spawnInitialWorkers() {
       id: uid(), templateId: tpl.id, color: tpl.color, capacity: tpl.capacity,
       x: pos.x, y: pos.y, routeId: null, inventory: {}, noScrap: false, segIdx: 0, segT: 0, dir: 1,
       targetX: null, targetY: null,
-      states: { selected: false, lifting: false },
+      states: { lifting: false },
     };
     workers.push(w);
     drawWorker(w);
@@ -2725,10 +2706,7 @@ function deleteWorker(w) {
   }
   workers = workers.filter(x => x.id !== w.id);
   const g = workerLayer.findOne('#' + w.id); if (g) g.destroy();
-  const gh = workerLayer.findOne('#ghost_' + w.id); if (gh) gh.destroy();
   workerLayer.batchDraw();
-  if (selectedWorkerId === w.id) selectedWorkerId = null;
-
 }
 
 // ===== PROPERTY WINDOW =====
@@ -3147,7 +3125,6 @@ const anim = new Konva.Animation(frame => {
       if (dist <= step || dist === 0) {
         w.x = w.targetX; w.y = w.targetY;
         w.targetX = null; w.targetY = null;
-        hideGhost(w);
         // If assigned to a route, begin shuttling from the slot midpoint
         // always heading toward fromId first.
         if (w.routeId) {
@@ -3271,6 +3248,7 @@ const anim = new Konva.Animation(frame => {
     routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
     uiLayer.find('.slot-rect').forEach(r => r.dashOffset(routeDashOffset));
+    uiLayer.find('.drag-trail').forEach(p => p.dashOffset(routeDashOffset));
   }
   tickRot += 360 * dt;
   tickIndicatorEl.style.transform = `rotate(${tickRot}deg)`;
@@ -3541,9 +3519,6 @@ const INSTANCE_STATE_DEFS = [
   { type: 'Piles', state: 'hovered',
     list: () => nodes.filter(n => n.states && n.states.hovered),
     label: n => 'Pile ' + n.id },
-  { type: 'Workers', state: 'selected',
-    list: () => workers.filter(w => w.states && w.states.selected),
-    label: workerLabel },
   { type: 'Workers', state: 'lifting',
     list: () => workers.filter(w => w.states && w.states.lifting),
     label: workerLabel },
@@ -3723,11 +3698,6 @@ function toggleDebugVis(typeKey) {
 
 const LOCAL_VIS_RULES = [
   {
-    name: 'Worker ghost',
-    driver: 'Lifting state',
-    note: 'A white marker left at the source position while a worker is being dragged. Shown/hidden by showGhost() / hideGhost() outside the view mode system.',
-  },
-  {
     name: 'Route slot',
     driver: 'Route occupancy',
     note: 'The slot indicator is hidden when a worker is assigned to the route. The routeSlots apply() function adds this condition on top of global visibility.',
@@ -3843,7 +3813,6 @@ function clearAllLevelShapes() {
   workerLayer.destroyChildren();
   uiLayer.destroyChildren();
   nodes = []; routes = []; workers = [];
-  selectedWorkerId = null;
 }
 function loadLevelData(data) {
   if (!data || data.version !== LEVEL_VERSION) {
@@ -3894,7 +3863,7 @@ function loadLevelData(data) {
       segIdx: wd.segIdx || 0, segT: wd.segT || 0, dir: wd.dir || 1,
       targetX: wd.targetX != null ? wd.targetX : null,
       targetY: wd.targetY != null ? wd.targetY : null,
-      states: { selected: false, lifting: false },
+      states: { lifting: false },
     };
     workers.push(w);
     drawWorker(w);
@@ -4035,7 +4004,6 @@ function toggleGpPanel() {
 let gpActiveTab = 'gameplay';
 const VS_TYPE_LABELS = {
   worker: 'Worker',
-  workerGhost: 'Worker Ghost',
   pileSquare: 'Pile (square)',
   pileStackPiece: 'Pile Stack Piece',
   route: 'Route Path',
@@ -4049,6 +4017,7 @@ const VS_TYPE_LABELS = {
   miniAnchor: 'Mini Anchor',
   trafficLightMan: 'Traffic-Light Man',
   assignTriangle: 'Assign Triangle',
+  dragPortrait: 'Drag Portrait',
   guiPanel: 'GUI Panel',
   routeFilter: 'Route Filter',
   scrapStack: 'Scrap Stack',
@@ -4494,17 +4463,6 @@ function applyVisualStyles(typeKey) {
       workerLayer.batchDraw();
       break;
     }
-    case 'workerGhost': {
-      stage.find('.worker-ghost').forEach(g => {
-        const body = g.findOne('.ghostbody') || g.findOne('Rect');
-        if (body) {
-          body.fill(V.fill); body.stroke(V.strokeColor); body.strokeWidth(V.strokeWidth);
-          body.cornerRadius(V.cornerRadius);
-        }
-      });
-      workerLayer.batchDraw();
-      break;
-    }
     case 'pileSquare': {
       PILE_DOT_PATTERN = buildPileDotPattern(V.dotPatternColor);
       const half = V.size / 2;
@@ -4617,6 +4575,26 @@ function applyVisualStyles(typeKey) {
         });
         workerLayer.batchDraw();
       }
+      break;
+    }
+    case 'dragPortrait': {
+      const S = V.size;
+      workerLayer.find('.drag-portrait-grp').forEach(dpg => {
+        const bg = dpg.findOne('.drag-portrait-bg');
+        if (bg) { bg.x(-S/2); bg.y(0); bg.width(S); bg.height(S); bg.cornerRadius(V.cornerRadius); bg.stroke(V.strokeColor); bg.strokeWidth(V.strokeWidth); } // position (offsetY) is applied live in onTriMove
+        const dpi = dpg.findOne('.drag-portrait-img');
+        if (dpi) {
+          dpi.x(-S/2); dpi.y(0); dpi.width(S); dpi.height(S); dpi.cornerRadius(V.cornerRadius);
+          const native = dpi.image();
+          if (native && native.naturalWidth) {
+            const zoom = VISUAL_STYLES.worker.portraitZoom;
+            const iw = native.naturalWidth, ih = native.naturalHeight;
+            const cw = iw / zoom, ch = ih / zoom;
+            dpi.cropX((iw - cw) / 2); dpi.cropY((ih - ch) / 2); dpi.cropWidth(cw); dpi.cropHeight(ch);
+          }
+        }
+      });
+      workerLayer.batchDraw();
       break;
     }
     case 'miniAnchor': {
