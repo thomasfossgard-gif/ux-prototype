@@ -439,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#123';
+const APP_VERSION = '0.1.2#127';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -541,11 +541,11 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 2,
     dashOn: 8,
     dashOff: 4,
-    fill: '#878787',
+    fill: 'rgba(135,135,135,0.47)',
     shadowOpacity: 0.6,
     hoverStrokeColor: '#ffffff',
     hoverStrokeWidth: 3,
-    hoverFill: '#4a4a4a',
+    hoverFill: '#e3e3e3',
   },
   slotLabel: {
     fontSize: 10,
@@ -671,11 +671,30 @@ const VISUAL_STYLES_DEFAULT = {
     trunkHeight: 15,
     trunkColor: '#654321',
   },
-  hitboxPile: { radius: 24 },
-  hitboxAnchor: { radius: 11 },
-  hitboxRouteHover: { strokeWidth: 28 },
-  hitboxWorker: { pad: 4 },
-  hitboxTri: { pad: 8 },
+  hitboxPile: {
+    radius: 24,
+  },
+  hitboxAnchor: {
+    radius: 11,
+  },
+  hitboxRouteHover: {
+    strokeWidth: 28,
+  },
+  hitboxWorker: {
+    pad: 4,
+  },
+  hitboxTri: {
+    pad: 8,
+  },
+  hitboxSlot: {
+    radius: 23,
+  },
+  hitboxSlotHover: {
+    pad: 6,
+  },
+  hitboxSlotIcons: {
+    pad: 4,
+  },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -728,6 +747,17 @@ let _filterPanel = null;
 let _filterGhost = null;
 let _anchorDragState = null;
 let _hitboxDebugLayer = null;
+const _hitboxPinnedTypes = new Set();
+const HITBOX_TYPE_TO_NAMES = {
+  hitboxPile:       ['hitbox-pile'],
+  hitboxAnchor:     ['anchor-hit'],
+  hitboxRouteHover: ['hover-hit-route'],
+  hitboxWorker:     ['hitbox-worker'],
+  hitboxTri:        ['hitbox-tri'],
+  hitboxSlot:       ['hitbox-slot'],
+  hitboxSlotHover:  ['hover-hit-slot'],
+  hitboxSlotIcons:  ['slot-delhit', 'slot-gearhit'],
+};
 function holdRouteView(routeId) {
   if (routeViewHeld) return;
   routeViewHeld = true;
@@ -2590,15 +2620,16 @@ function drawSlotForRoute(route) {
     fill: VSL.color, visible: false, listening: false, name: 'slot-label',
   });
   const hitbox = new Konva.Circle({
-    radius: 26, fillPatternImage: STRIPE_PATTERN, listening: false,
+    radius: VISUAL_STYLES.hitboxSlot.radius, fillPatternImage: STRIPE_PATTERN, listening: false,
     name: 'hitbox-slot', visible: false,
   });
   // Hover hit rect covers the full bounding box of slot + both icons so there are no gaps.
-  const _hhLeft  = Math.min(-slotHalf, VSD.offsetX) - 8;
-  const _hhRight = Math.max(slotHalf, VSG.offsetX + VSG.fontSize) + 8;
-  const _hhTop   = Math.min(-slotHalf, VSG.offsetY, VSD.offsetY) - 8;
+  const _hhPad   = VISUAL_STYLES.hitboxSlotHover.pad;
+  const _hhLeft  = Math.min(-slotHalf, VSD.offsetX) - _hhPad;
+  const _hhRight = Math.max(slotHalf, VSG.offsetX + VSG.fontSize) + _hhPad;
+  const _hhTop   = Math.min(-slotHalf, VSG.offsetY, VSD.offsetY) - _hhPad;
   const hoverHit = new Konva.Rect({
-    x: _hhLeft, y: _hhTop, width: _hhRight - _hhLeft, height: slotHalf + 8 - _hhTop,
+    x: _hhLeft, y: _hhTop, width: _hhRight - _hhLeft, height: slotHalf + _hhPad - _hhTop,
     fill: routeColor(), opacity: 0.001, name: 'hover-hit-slot',
   });
   // Gear icon — positioned via VISUAL_STYLES.
@@ -2609,7 +2640,7 @@ function drawSlotForRoute(route) {
     listening: false, name: 'slot-gear',
   });
   // Delete button — background and hit area derived from icon position.
-  const _dPad = 6;
+  const _dPad = VISUAL_STYLES.hitboxSlotIcons.pad;
   const deleteBg = new Konva.Rect({
     x: VSD.offsetX - _dPad, y: VSD.offsetY - _dPad,
     width: VSD.fontSize + _dPad * 2, height: VSD.fontSize + _dPad * 2, cornerRadius: 4,
@@ -3469,27 +3500,27 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     setGamePaused(!gamePaused);
   }
-  if ((e.key === 'h' || e.key === 'H') && !e.repeat) showHitboxDebug();
+  if ((e.key === 'h' || e.key === 'H') && !e.repeat) {
+    const all = Object.values(HITBOX_TYPE_TO_NAMES).flat();
+    refreshHitboxOverlay(all);
+  }
 });
 document.addEventListener('keyup', e => {
-  if (e.key === 'h' || e.key === 'H') hideHitboxDebug();
+  if (e.key === 'h' || e.key === 'H') refreshHitboxOverlay();
 });
 
-function showHitboxDebug() {
-  if (_hitboxDebugLayer) return;
+function refreshHitboxOverlay(namesOverride) {
+  const names = namesOverride ?? Array.from(_hitboxPinnedTypes).flatMap(t => HITBOX_TYPE_TO_NAMES[t] ?? []);
+  if (_hitboxDebugLayer) { _hitboxDebugLayer.destroy(); _hitboxDebugLayer = null; }
+  if (!names.length) return;
   _hitboxDebugLayer = new Konva.Layer({ listening: false });
   stage.add(_hitboxDebugLayer);
-  const HITBOX_NAMES = [
-    'hitbox-pile', 'anchor-hit', 'hitbox-worker', 'hitbox-tri',
-    'hover-hit-route', 'hitbox-slot', 'hover-hit-slot',
-    'slot-delhit', 'slot-gearhit',
-  ];
   const sx = stage.scaleX(), sy = stage.scaleY();
   const spx = stage.x(), spy = stage.y();
   const pink = 'rgba(255,80,200,0.35)';
   const pinkStroke = 'rgba(255,100,220,0.95)';
   for (const layer of [gridLayer, nodeLayer, edgeLayer, uiLayer, workerLayer]) {
-    for (const name of HITBOX_NAMES) {
+    for (const name of names) {
       layer.find('.' + name).forEach(shape => {
         const r = shape.getClientRect();
         const wx = (r.x - spx) / sx, wy = (r.y - spy) / sy;
@@ -3508,12 +3539,6 @@ function showHitboxDebug() {
     }
   }
   _hitboxDebugLayer.batchDraw();
-}
-
-function hideHitboxDebug() {
-  if (!_hitboxDebugLayer) return;
-  _hitboxDebugLayer.destroy();
-  _hitboxDebugLayer = null;
 }
 
 // ===== DEBUG PANEL =====
@@ -4163,7 +4188,7 @@ document.getElementById('btn-load-level').addEventListener('click', uploadLevel)
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
-const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-02T20:50:11.455Z","stage":{"x":-459.1035200000008,"y":-267.40338000000054,"scale":1.6105100000000008},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i3","templateId":"oA","x":960,"y":360,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i4","templateId":"oA","x":800,"y":480,"color":"#2f6fd6","items":18,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"}]},{"id":"i5","templateId":"dA","x":747,"y":207,"color":"#ffffff","items":0,"shape":"building","label":"Office","scrap":[]},{"id":"i6","templateId":"dB","x":890,"y":184,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i7","templateId":"dB","x":633,"y":122,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i8","templateId":"dB","x":1282,"y":201,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i9","templateId":"dB","x":939,"y":149,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i10","templateId":"dB","x":1316,"y":286,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i11","templateId":"dB","x":1194,"y":619,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i12","templateId":"dB","x":422,"y":259,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i13","templateId":"dB","x":474,"y":676,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]}],"routes":[{"id":"i14","fromId":"i4","toId":"i3","workerId":null,"allowedTypes":{"wood":true,"steel":true,"plastic":true}}],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":520,"y":400,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":809,"y":883,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":15};
+const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-02T21:41:39.683Z","stage":{"x":-381.9601554757196,"y":-261.13031122054565,"scale":1.6105100000000008},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i3","templateId":"oA","x":960,"y":360,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i4","templateId":"oA","x":800,"y":480,"color":"#2f6fd6","items":18,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"}]},{"id":"i5","templateId":"dA","x":747,"y":207,"color":"#ffffff","items":0,"shape":"building","label":"Office","scrap":[]},{"id":"i6","templateId":"dB","x":890,"y":184,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i7","templateId":"dB","x":633,"y":122,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i8","templateId":"dB","x":1282,"y":201,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i9","templateId":"dB","x":939,"y":149,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i10","templateId":"dB","x":1316,"y":286,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i11","templateId":"dB","x":1194,"y":619,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i12","templateId":"dB","x":422,"y":259,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i13","templateId":"dB","x":474,"y":676,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]}],"routes":[],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":520,"y":400,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":809,"y":883,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":15};
 let metaOpen = true;
 
 function toggleMetaControls() {
@@ -4265,15 +4290,18 @@ const VS_TYPE_LABELS = {
   buildingChimney: 'Building Chimney',
   buildingSign: 'Building Sign',
   tree: 'Tree',
-  hitboxPile: 'Pile Hitbox',
-  hitboxAnchor: 'Mini-Anchor Hitbox',
-  hitboxRouteHover: 'Route Hover Hitbox',
-  hitboxWorker: 'Worker Body Hitbox',
-  hitboxTri: 'Drag Triangle Hitbox',
+  hitboxPile: 'hitbox-pile',
+  hitboxAnchor: 'anchor-hit',
+  hitboxRouteHover: 'hover-hit-route',
+  hitboxWorker: 'hitbox-worker',
+  hitboxTri: 'hitbox-tri',
+  hitboxSlot: 'hitbox-slot',
+  hitboxSlotHover: 'hover-hit-slot',
+  hitboxSlotIcons: 'slot-delhit / slot-gearhit',
 };
 const VS_OPEN_TYPES = new Set();
 const DECORATION_TYPES = new Set(['building', 'buildingDoor', 'buildingSupport', 'buildingChimney', 'buildingSign', 'tree']);
-const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 'hitboxWorker', 'hitboxTri']);
+const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 'hitboxWorker', 'hitboxTri', 'hitboxSlot', 'hitboxSlotHover', 'hitboxSlotIcons']);
 
 function gpSwitchTab(tab) {
   gpActiveTab = tab;
@@ -4283,6 +4311,7 @@ function gpSwitchTab(tab) {
   document.getElementById('gp-visuals-pane').hidden = tab !== 'visuals';
   document.getElementById('gp-decorations-pane').hidden = tab !== 'decorations';
   document.getElementById('gp-hitboxes-pane').hidden = tab !== 'hitboxes';
+  if (tab !== 'hitboxes') { _hitboxPinnedTypes.clear(); refreshHitboxOverlay(); }
   if (tab === 'visuals') renderVisualsTab();
   else if (tab === 'decorations') renderDecorationsTab();
   else if (tab === 'hitboxes') renderHitboxesTab();
@@ -4444,8 +4473,15 @@ function renderHitboxesTab() {
   list.querySelectorAll('.vs-type-header').forEach(hdr => {
     hdr.addEventListener('click', () => {
       const key = hdr.dataset.type;
-      if (VS_OPEN_TYPES.has(key)) VS_OPEN_TYPES.delete(key); else VS_OPEN_TYPES.add(key);
+      if (VS_OPEN_TYPES.has(key)) {
+        VS_OPEN_TYPES.delete(key);
+        _hitboxPinnedTypes.delete(key);
+      } else {
+        VS_OPEN_TYPES.add(key);
+        _hitboxPinnedTypes.add(key);
+      }
       renderHitboxesTab();
+      refreshHitboxOverlay();
     });
   });
   list.querySelectorAll('[data-vs-action]').forEach(btn => {
@@ -5060,6 +5096,47 @@ function applyVisualStyles(typeKey) {
         s.width(VA.width + pad * 2); s.height(VA.height + pad * 2);
       });
       workerLayer.batchDraw();
+      break;
+    }
+    case 'hitboxSlot': {
+      stage.find('.hitbox-slot').forEach(c => c.radius(V.radius));
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'hitboxSlotHover': {
+      const VSR = VISUAL_STYLES.slotRect;
+      const VSD = VISUAL_STYLES.slotDelete;
+      const VSG = VISUAL_STYLES.slotGear;
+      const pad = V.pad;
+      const slotHalf = VSR.size / 2;
+      const left  = Math.min(-slotHalf, VSD.offsetX) - pad;
+      const right = Math.max(slotHalf, VSG.offsetX + VSG.fontSize) + pad;
+      const top   = Math.min(-slotHalf, VSG.offsetY, VSD.offsetY) - pad;
+      stage.find('.hover-hit-slot').forEach(s => {
+        s.x(left); s.y(top);
+        s.width(right - left); s.height(slotHalf + pad - top);
+      });
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'hitboxSlotIcons': {
+      const VSD = VISUAL_STYLES.slotDelete;
+      const VSG = VISUAL_STYLES.slotGear;
+      const pad = V.pad;
+      stage.find('.slot-gearhit').forEach(s => {
+        s.x(VSG.offsetX - pad); s.y(VSG.offsetY - pad);
+        s.width(VSG.fontSize + pad * 2); s.height(VSG.fontSize + pad * 2);
+      });
+      stage.find('.slot-delhit').forEach(s => {
+        const ep = pad + 2;
+        s.x(VSD.offsetX - ep); s.y(VSD.offsetY - ep);
+        s.width(VSD.fontSize + ep * 2); s.height(VSD.fontSize + ep * 2);
+      });
+      stage.find('.slot-delbg').forEach(s => {
+        s.x(VSD.offsetX - pad); s.y(VSD.offsetY - pad);
+        s.width(VSD.fontSize + pad * 2); s.height(VSD.fontSize + pad * 2);
+      });
+      uiLayer.batchDraw();
       break;
     }
   }
