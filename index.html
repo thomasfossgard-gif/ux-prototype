@@ -19,7 +19,6 @@
   .palette-item:hover { outline: 2px solid #4a90e2; }
   .swatch-circle { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; }
   .swatch-square { width: 30px; height: 30px; border-radius: 0; border: none; background-image: radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px); background-size: 5px 5px; }
-  .swatch-triangle { width: 30px; height: 30px; clip-path: polygon(50% 4%, 4% 96%, 96% 96%); border: none; }
   .tool-btn { width: 48px; height: 48px; background: #2c313c; border: none; color: #ccc; cursor: pointer; border-radius: 6px; font-size: 11px; padding: 4px; line-height: 1.1; }
   .tool-btn.active { background: #4a90e2; color: #fff; }
   .tool-btn:hover:not(.active) { background: #3a4150; }
@@ -420,7 +419,7 @@ const APP_VERSION = '0.1.2#78';
 const VISUAL_STYLES_DEFAULT = {
   worker: {
     size: 28,
-    cornerRadius: 6,
+    cornerRadius: 2,
     strokeColor: 'rgba(255,255,255,0.35)',
     strokeWidth: 1.5,
     portraitZoom: 1.2,
@@ -439,10 +438,6 @@ const VISUAL_STYLES_DEFAULT = {
     cornerRadius: 0,
     strokeWidth: 1.5,
     dotPatternColor: 'rgba(255,255,255,0.22)',
-  },
-  pileTriangle: {
-    radius: 6,
-    strokeWidth: 1,
   },
   pileStackPiece: {
     radius: 6,
@@ -862,7 +857,6 @@ function makePaletteItem(tpl) {
   } else {
     const sw = document.createElement('div');
     if (tpl.kind === 'worker') sw.className = 'swatch-circle';
-    else if (tpl.shape === 'triangle') sw.className = 'swatch-triangle';
     else sw.className = 'swatch-square';
     sw.style.backgroundColor = tpl.color;
     el.appendChild(sw);
@@ -921,13 +915,13 @@ function startPaletteDrag(e, tpl, sourceEl) {
   ghostEl = document.createElement('div');
   ghostEl.id = 'ghost';
   const isWorker = tpl.kind === 'worker';
-  const size = isWorker ? 26 : (tpl.shape === 'triangle' ? 12 : 44);
+  const size = isWorker ? 26 : 44;
   const radius = isWorker ? '5px' : '0';
   // Match the in-level look: solid fill, no white border, dot pattern overlay for piles.
   const dotsBg = isWorker
     ? ''
     : ';background-image:radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);background-size:6px 6px';
-  const clipPath = tpl.shape === 'triangle' ? ';clip-path:polygon(50% 4%,4% 96%,96% 96%)' : '';
+  const clipPath = '';
   ghostEl.style.cssText =
     'width:' + size + 'px;height:' + size + 'px;background-color:' + tpl.color +
     ';border-radius:' + radius + dotsBg + clipPath;
@@ -984,6 +978,23 @@ const WORKER_PORTRAITS = {};
 palette.workers.forEach(tpl => {
   if (!tpl.name) return;
   const img = new Image();
+  img.onload = () => {
+    // Correct crop for any workers drawn before this image finished loading.
+    const VW = VISUAL_STYLES.worker;
+    const zoom = VW.portraitZoom;
+    const cw = img.naturalWidth / zoom, ch = img.naturalHeight / zoom;
+    workerLayer.find('.workercircle').forEach(node => {
+      const grp = node.getParent();
+      const w = grp && workers.find(w => w.id === grp.id());
+      const wTpl = w && palette.workers.find(t => t.id === w.templateId);
+      if (!wTpl || wTpl.name !== tpl.name) return;
+      node.cropX((img.naturalWidth - cw) / 2);
+      node.cropY((img.naturalHeight - ch) / 2);
+      node.cropWidth(cw);
+      node.cropHeight(ch);
+    });
+    workerLayer.batchDraw();
+  };
   img.src = `icons/icon_worker_${tpl.name}.png`;
   WORKER_PORTRAITS[tpl.name] = img;
 });
@@ -1112,21 +1123,14 @@ function buildPileDotPattern(color) {
 let PILE_DOT_PATTERN = buildPileDotPattern(VISUAL_STYLES.pileSquare.dotPatternColor);
 function drawNode(node) {
   const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
-  const isTriangle = node.shape === 'triangle';
-  const VS = VISUAL_STYLES.pileSquare, VT = VISUAL_STYLES.pileTriangle;
+  const VS = VISUAL_STYLES.pileSquare;
   const half = VS.size / 2;
-  const shape = isTriangle
-    ? new Konva.RegularPolygon({ sides: 3, radius: VT.radius, fill: node.color, stroke: node.color, strokeWidth: VT.strokeWidth, name: 'nodeshape' })
-    : new Konva.Rect({ x: -half, y: -half, width: VS.size, height: VS.size, cornerRadius: VS.cornerRadius, fill: node.color, stroke: node.color, strokeWidth: VS.strokeWidth, name: 'nodeshape' });
-  const hitbox = new Konva.Circle({ radius: isTriangle ? 10 : 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
+  const shape = new Konva.Rect({ x: -half, y: -half, width: VS.size, height: VS.size, cornerRadius: VS.cornerRadius, fill: node.color, stroke: node.color, strokeWidth: VS.strokeWidth, name: 'nodeshape' });
+  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
   const anchorHit = new Konva.Circle({ radius: 11, fill: 'transparent', name: 'anchor-hit' });
   const stack = new Konva.Group({ name: 'stack' });
-  if (!isTriangle) {
-    const tex = new Konva.Rect({ x: -(half - 2), y: -(half - 2), width: VS.size - 4, height: VS.size - 4, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
-    grp.add(shape, tex, hitbox, anchorHit, stack);
-  } else {
-    grp.add(shape, hitbox, anchorHit, stack);
-  }
+  const tex = new Konva.Rect({ x: -(half - 2), y: -(half - 2), width: VS.size - 4, height: VS.size - 4, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
+  grp.add(shape, tex, hitbox, anchorHit, stack);
   let grpFocusPushed = false;
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
   grp.on('mouseenter', () => { if (!lineDraft) { grpFocusPushed = true; enterPileFocus(); } });
@@ -2037,12 +2041,10 @@ function openInspectPanel(type, entity, clientX, clientY) {
   body.innerHTML = '';
 
   if (type === 'pile') {
-    const isPile = entity.shape !== 'triangle';
-    title.textContent = isPile ? 'Pile' : ('Scrap — ' + (entity.label || entity.id));
+    title.textContent = 'Pile';
     idEl.textContent  = 'ID: ' + entity.id + '  ·  pos ' + entity.x + ', ' + entity.y;
 
-    if (isPile) {
-      if (SCRAP_TYPES.length) {
+    if (SCRAP_TYPES.length) {
         const hdr = document.createElement('div');
         hdr.style.cssText = 'font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700';
         hdr.textContent = 'Scrap contents';
@@ -2051,7 +2053,6 @@ function openInspectPanel(type, entity, clientX, clientY) {
         const div = document.createElement('hr');
         div.className = 'inspect-divider';
         body.appendChild(div);
-      }
     }
 
     addInspectRow(body, 'Color', 'color', entity.color, null, null, v => {
@@ -3212,7 +3213,6 @@ const VS_TYPE_LABELS = {
   worker: 'Worker',
   workerGhost: 'Worker Ghost',
   pileSquare: 'Pile (square)',
-  pileTriangle: 'Pile (triangle)',
   pileStackPiece: 'Pile Stack Piece',
   route: 'Route Path',
   slotRect: 'Slot Body',
@@ -3600,15 +3600,6 @@ function applyVisualStyles(typeKey) {
           tex.width(V.size - 4); tex.height(V.size - 4);
           tex.fillPatternImage(PILE_DOT_PATTERN);
         }
-      });
-      nodeLayer.batchDraw();
-      break;
-    }
-    case 'pileTriangle': {
-      stage.find('.node').forEach(grp => {
-        const shape = grp.findOne('.nodeshape');
-        if (!shape || shape.className !== 'RegularPolygon') return;
-        shape.radius(V.radius); shape.strokeWidth(V.strokeWidth);
       });
       nodeLayer.batchDraw();
       break;
