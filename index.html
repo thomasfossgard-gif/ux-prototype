@@ -440,7 +440,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#140';
+const APP_VERSION = '0.1.2#142';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -488,10 +488,14 @@ const VISUAL_STYLES_DEFAULT = {
     dashOn: 8,
     dashOff: 6,
     cornerRadius: 8,
+    animSpeed: 10,
   },
   miniAnchor: {
-    strokeColor: 'rgba(255,255,255,0.85)',
-    strokeWidth: 2,
+    strokeColor: 'rgba(222,222,222,0.85)',
+    strokeWidth: 1.5,
+    fill: '#dedede',
+    radius: 4,
+    offset: 7,
     stubLength: 12,
     rejectFlashColor: '#e63946',
     rejectFlashDurationMs: 240,
@@ -540,8 +544,8 @@ const VISUAL_STYLES_DEFAULT = {
     size: 40,
     cornerRadius: 7,
     strokeWidth: 2,
-    dashOn: 8,
-    dashOff: 4,
+    dashOn: 5,
+    dashOff: 3,
     fill: 'rgba(135,135,135,0.47)',
     shadowOpacity: 0.6,
     hoverStrokeColor: '#ffffff',
@@ -1979,10 +1983,11 @@ function getPileAnchors(nodeId) {
       const t = (i + 0.5) / arr.length;
       const off = (t - 0.5) * 2 * halfSize;
       let x, y;
-      if (side === 'right')       { x = node.x + halfSize; y = node.y + off; }
-      else if (side === 'left')   { x = node.x - halfSize; y = node.y + off; }
-      else if (side === 'top')    { x = node.x + off;      y = node.y - halfSize; }
-      else                        { x = node.x + off;      y = node.y + halfSize; }
+      const ao = VISUAL_STYLES.miniAnchor.offset;
+      if (side === 'right')       { x = node.x + halfSize + ao; y = node.y + off; }
+      else if (side === 'left')   { x = node.x - halfSize - ao; y = node.y + off; }
+      else if (side === 'top')    { x = node.x + off;           y = node.y - halfSize - ao; }
+      else                        { x = node.x + off;           y = node.y + halfSize + ao; }
       anchors[route.id] = { x, y, side };
     });
   });
@@ -2267,6 +2272,12 @@ function startLineDraft(fromNode) {
   uiLayer.add(path, endA, endB, endBArrow, scrapPreview);
   lineDraft = { fromNode, fromX: from.x, fromY: from.y, path, endA, endB, endBArrow, scrapPreview, previewColor };
   pushViewFocus('ViewGhost');
+  uiLayer.find('.slot').forEach(s => {
+    s.findOne('Rect')?.visible(false);
+    s.findOne('.slot-gear')?.visible(false);
+    ['.slot-delbg', '.slot-del', '.slot-delhit', '.slot-gearhit'].forEach(n => s.findOne(n)?.visible(false));
+  });
+  buildRevealGhosts(false);
   uiLayer.batchDraw();
 }
 function cancelLineDraft() {
@@ -2409,27 +2420,37 @@ function exitRouteHover(route) {
 }
 
 // ===== ROUTE RENDER =====
+// Rotation for mini anchor triangle: source points away from pile, dest points toward.
+// RegularPolygon rotation=0 has a vertex at top (points up).
+function anchorRotationDeg(side, isFromEnd) {
+  const away = { top: 0, right: 90, bottom: 180, left: 270 };
+  const deg = away[side] ?? 90;
+  return isFromEnd ? deg : (deg + 180) % 360;
+}
+
 function makeMiniAnchor(route, isFromEnd) {
   const VMA = VISUAL_STYLES.miniAnchor;
   const nodeId = isFromEnd ? route.fromId : route.toId;
-  const a = getPileAnchors(nodeId)[route.id] || { x: 0, y: 0 };
-  const circle = new Konva.Circle({
+  const a = getPileAnchors(nodeId)[route.id] || { x: 0, y: 0, side: 'right' };
+  const tri = new Konva.RegularPolygon({
     x: a.x, y: a.y,
-    radius: VISUAL_STYLES.hitboxMiniAnchor.radius,
+    sides: 3,
+    radius: VMA.radius,
+    rotation: anchorRotationDeg(a.side, isFromEnd),
     stroke: VMA.strokeColor, strokeWidth: VMA.strokeWidth,
-    fill: 'rgba(0,0,0,0.001)',
+    fill: VMA.fill,
     name: 'mini-anchor' + (isFromEnd ? ' mini-anchor-from' : ' mini-anchor-to'),
     visible: false,
   });
-  circle.on('mouseenter', () => { containerEl.style.cursor = 'grab'; });
-  circle.on('mouseleave', () => { if (!_anchorDragState) containerEl.style.cursor = MODES[currentMode].cursor; });
-  circle.on('mousedown', e => {
+  tri.on('mouseenter', () => { containerEl.style.cursor = 'grab'; });
+  tri.on('mouseleave', () => { if (!_anchorDragState) containerEl.style.cursor = MODES[currentMode].cursor; });
+  tri.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
     if (e.evt.button !== 0) return;
     e.cancelBubble = true;
-    startMiniAnchorDrag(route, isFromEnd, circle);
+    startMiniAnchorDrag(route, isFromEnd, tri);
   });
-  return circle;
+  return tri;
 }
 
 function flashAnchorReject(circle) {
@@ -2482,6 +2503,7 @@ function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
       _anchorDragState.y = proj.y;
       _anchorDragState.side = proj.side;
       anchorShape.position({ x: proj.x, y: proj.y });
+      anchorShape.rotation(anchorRotationDeg(proj.side, isFromEnd));
       anchorShape.stroke(bestNode.id !== origNodeId ? '#4cf' : VMA.strokeColor);
     } else {
       _anchorDragState.targetNode = null;
@@ -2737,8 +2759,8 @@ function redrawRoutesTouching(nodeId) {
     const toA   = getRouteAnchor(j, j.toId);
     const fromCircle = grp.findOne('.mini-anchor-from');
     const toCircle   = grp.findOne('.mini-anchor-to');
-    if (fromA && fromCircle) fromCircle.position({ x: fromA.x, y: fromA.y });
-    if (toA && toCircle)     toCircle.position({ x: toA.x, y: toA.y });
+    if (fromA && fromCircle) { fromCircle.position({ x: fromA.x, y: fromA.y }); fromCircle.rotation(anchorRotationDeg(fromA.side, true)); }
+    if (toA && toCircle)     { toCircle.position({ x: toA.x, y: toA.y });       toCircle.rotation(anchorRotationDeg(toA.side, false)); }
     const slot = uiLayer.findOne('#slot_' + j.id);
     if (slot) {
       const wp = routeWaypoints(j);
@@ -3313,7 +3335,7 @@ function showDebugError(e) {
 
 // ===== ANIMATION (worker shuttle + route dash) =====
 const SPEED_PX_PER_SEC = 90;
-const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
+// dashes flow from→to — read from VISUAL_STYLES.route.animSpeed
 let routeDashOffset = 0;
 let tickRot = 0;
 let _dragRagdoll = null;        // ragdoll particles + shapes — active during tri drag
@@ -3448,7 +3470,7 @@ const anim = new Konva.Animation(frame => {
   } catch(e) { showDebugError(e); } });
   tickFlashes();
   if (routes.length > 0) {
-    routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
+    routeDashOffset -= VISUAL_STYLES.route.animSpeed * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
     uiLayer.find('.drag-trail').forEach(p => p.dashOffset(routeDashOffset));
   }
@@ -3701,7 +3723,7 @@ function buildRevealGhosts(includeRoutes = true) {
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
     const isHovered = grp.id() === _hoveredNodeId;
-    const showDot = _anchorHovered ? true : (_hoveredNodeId && isHovered);
+    const showDot = (_anchorHovered || lineDraft) ? true : (_hoveredNodeId && isHovered);
     if (showDot) {
       revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
     }
@@ -5008,10 +5030,18 @@ function applyVisualStyles(typeKey) {
       stage.find('.mini-anchor').forEach(a => {
         a.stroke(V.strokeColor);
         a.strokeWidth(V.strokeWidth);
+        a.fill(V.fill);
+        a.radius(V.radius);
       });
-      // Stub length affects path geometry — re-path all routes
+      // offset and stubLength affect path geometry — reposition anchors and re-path all routes
       routes.forEach(j => {
         const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
+        const fromA = getRouteAnchor(j, j.fromId);
+        const toA   = getRouteAnchor(j, j.toId);
+        const fromCircle = grp.findOne('.mini-anchor-from');
+        const toCircle   = grp.findOne('.mini-anchor-to');
+        if (fromA && fromCircle) { fromCircle.position({ x: fromA.x, y: fromA.y }); fromCircle.rotation(anchorRotationDeg(fromA.side, true)); }
+        if (toA   && toCircle)   { toCircle.position({ x: toA.x, y: toA.y });       toCircle.rotation(anchorRotationDeg(toA.side, false)); }
         const pd = routePathData(j);
         grp.findOne('.routepath')?.data(pd);
         grp.findOne('.hover-hit-route')?.data(pd);
