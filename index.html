@@ -363,7 +363,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#72';
+const APP_VERSION = '0.1.2#75';
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -1223,7 +1223,7 @@ function orthoPathData(x1, y1, x2, y2) {
   if (Math.abs(dy) < 1) return `M ${x1} ${y1} L ${x2} ${y2}`;
   // horizontal leg first, then vertical leg. Corner at (x2, y1).
   const cx = x2, cy = y1;
-  const r = Math.min(16, Math.abs(dx) / 2, Math.abs(dy) / 2);
+  const r = Math.min(4, Math.abs(dx) / 2, Math.abs(dy) / 2);
   const sx = Math.sign(x1 - cx); // toward x1 along leg1
   const sy = Math.sign(y2 - cy); // toward y2 along leg2
   const ax = cx + sx * r, ay = cy;
@@ -1365,13 +1365,13 @@ function startLineDraft(fromNode) {
   const previewColor = peekRouteColor();
   const from = { x: fromNode.x, y: fromNode.y };
   const ghostStroke = 'rgba(255,255,255,0.55)';
-  const path = new Konva.Path({ stroke: ghostStroke, strokeWidth: 6, dash: [10, 6], lineCap: 'round', lineJoin: 'round', opacity: 0.85 });
+  const path = new Konva.Path({ stroke: ghostStroke, strokeWidth: 4, dash: [8, 6], lineCap: 'butt', lineJoin: 'round', opacity: 0.85 });
   const endA = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: 'rgba(255,255,255,0.3)', stroke: ghostStroke, strokeWidth: 2 });
   const endB = new Konva.Circle({ x: from.x, y: from.y, radius: 9, fill: 'rgba(255,255,255,0.3)', stroke: ghostStroke, strokeWidth: 2, visible: false });
   const endBArrow = new Konva.Line({
     x: from.x, y: from.y,
-    points: [-8, -8, 0, 0, -8, 8],
-    stroke: ghostStroke, strokeWidth: 3, lineCap: 'round', lineJoin: 'round',
+    points: [-5.6, -5.6, 0, 0, -5.6, 5.6],
+    stroke: ghostStroke, strokeWidth: 2, lineCap: 'round', lineJoin: 'round',
     listening: false,
   });
   const scrapPreview = new Konva.Group({ x: from.x, y: from.y, listening: false });
@@ -1519,8 +1519,8 @@ function drawRoute(route) {
   const grp = new Konva.Group({ id: route.id, name: 'route' });
   const path = new Konva.Path({
     data: routePathData(route),
-    stroke: route.color, strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
-    dash: [14, 8], dashOffset: 0, name: 'routepath'
+    stroke: route.color, strokeWidth: 4, lineCap: 'butt', lineJoin: 'round',
+    dash: [8, 6], dashOffset: 0, name: 'routepath'
   });
   const hitbox = new Konva.Path({
     data: routePathData(route),
@@ -1554,6 +1554,7 @@ function drawSlotForRoute(route) {
     x: -22, y: -22, width: 44, height: 44, cornerRadius: 7,
     stroke: route.color, strokeWidth: 2, dash: [14, 8],
     fill: 'rgba(255,255,255,0.06)', visible: false, name: 'slot-rect',
+    shadowColor: route.color, shadowBlur: 0, shadowOpacity: 0.6,
   });
   const slotLabel = new Konva.Text({
     x: -40, y: 25, width: 80, text: '', align: 'center',
@@ -1568,15 +1569,55 @@ function drawSlotForRoute(route) {
   const hoverHit = new Konva.Circle({
     radius: 28, fill: route.color, opacity: 0.001, name: 'hover-hit-slot',
   });
-  grp.add(slot, slotLabel, hitbox, hoverHit);
+  // Gear icon — upper-right, outside slot boundary.
+  const gearIcon = new Konva.Text({
+    text: '⚙', fontSize: 13, fontFamily: 'system-ui, sans-serif',
+    fill: '#fff', opacity: 0.3, visible: false,
+    x: 24, y: -40,
+    listening: false, name: 'slot-gear',
+  });
+  // Delete button — upper-left, outside slot boundary.
+  const deleteBg = new Konva.Rect({
+    x: -40, y: -42, width: 18, height: 18, cornerRadius: 4,
+    fill: 'rgba(255,255,255,0.15)', visible: false, name: 'slot-delbg',
+  });
+  const deleteIcon = new Konva.Text({
+    text: '✕', fontSize: 11, fontFamily: 'system-ui, sans-serif',
+    fill: '#fff', opacity: 0.3, visible: false,
+    x: -37, y: -40,
+    listening: false, name: 'slot-del',
+  });
+  const deleteHit = new Konva.Rect({
+    x: -44, y: -46, width: 26, height: 26,
+    fill: 'transparent', name: 'slot-delhit', visible: false,
+  });
+  deleteHit.on('mousedown', e => {
+    if (currentMode !== 'gameInteract') return;
+    e.cancelBubble = true;
+    deleteRoute(route);
+  });
+  deleteHit.on('mouseenter', () => { deleteIcon.to({ opacity: 0.9, duration: 0.12 }); deleteBg.fill('rgba(255,80,80,0.35)'); deleteBg.getLayer()?.batchDraw(); });
+  deleteHit.on('mouseleave', () => { deleteIcon.to({ opacity: 0.3, duration: 0.12 }); deleteBg.fill('rgba(255,255,255,0.15)'); deleteBg.getLayer()?.batchDraw(); });
+  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit);
   grp.routeRef = route;
   grp.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
     e.cancelBubble = true;
     openSlotPopup(route, e.evt.clientX, e.evt.clientY);
   });
-  grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); showRouteHover(route); });
-  grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => hideRouteHover(route), 0); });
+  grp.on('mouseenter', () => {
+    clearTimeout(route._hoverTimer);
+    showRouteHover(route);
+    gearIcon.to({ opacity: 0.9, duration: 0.12 });
+    slot.to({ shadowBlur: 12, duration: 0.12 });
+    containerEl.style.cursor = 'pointer';
+  });
+  grp.on('mouseleave', () => {
+    route._hoverTimer = setTimeout(() => hideRouteHover(route), 0);
+    gearIcon.to({ opacity: 0.3, duration: 0.12 });
+    slot.to({ shadowBlur: 0, duration: 0.12 });
+    containerEl.style.cursor = MODES[currentMode].cursor;
+  });
   uiLayer.add(grp);
   // Continuous "Look at me" pulse on the slot body — sine 0→0.5→0 over 2s.
   // The pulse runs always; when the slot is hidden by view-mode visibility
@@ -2340,6 +2381,11 @@ const VISUAL_TYPES = [
       uiLayer.find('.slot').forEach(s => {
         const occupied = s.routeRef && s.routeRef.workerId;
         s.findOne('Rect')?.visible(vis && !occupied);
+        const gear = s.findOne('.slot-gear');
+        if (gear) { gear.visible(vis); if (!vis) gear.opacity(0.3); }
+        ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => s.findOne(n)?.visible(vis));
+        const del = s.findOne('.slot-del');
+        if (del && !vis) del.opacity(0.3);
         if (!vis) s.findOne('.slot-label')?.visible(false);
       });
       uiLayer.batchDraw();
