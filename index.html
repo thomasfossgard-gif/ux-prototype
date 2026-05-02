@@ -35,7 +35,7 @@
   #confirm-dialog { position: fixed; background: #232730; border: 1px solid #555; padding: 8px 10px; border-radius: 6px; z-index: 50; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
   #confirm-dialog button { margin-left: 6px; padding: 3px 10px; cursor: pointer; background: #3a4150; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 11px; }
   #confirm-dialog button:hover { background: #4a90e2; }
-  .hint { color: #bbb; font-size: 26px; pointer-events: none; white-space: nowrap; text-align: center; }
+  .hint { position: absolute; left: 50%; transform: translateX(-50%); color: #bbb; font-size: 26px; pointer-events: none; white-space: nowrap; text-align: center; }
   #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(0,0,0,0.3); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
   #tick-indicator { position: absolute; left: -18px; top: 50%; margin-top: -5px; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 2px; pointer-events: none; }
   #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 10; }
@@ -312,8 +312,8 @@
           <div id="meta-status"></div>
         </div>
       </div>
-      <div class="hint" id="hint">Drag some Junk to a pile to get started!</div>
     </div>
+    <div class="hint" id="hint">Drag some Junk to a pile to get started!</div>
     <div id="mode-label">Mode: Game Interact</div>
     <div id="version-label"></div>
   </div>
@@ -432,7 +432,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#104';
+const APP_VERSION = '0.1.2#117';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -457,14 +457,10 @@ const VISUAL_STYLES_DEFAULT = {
     cornerRadius: 6,
   },
   physicsGhost: {
-    fill: 'rgba(255,255,255,0.18)',
-    strokeColor: 'rgba(255,255,255,0.5)',
-    strokeWidth: 1.5,
-    ropeColor: 'rgba(255,255,255,0.25)',
-    ropeWidth: 1.5,
-    ropeLength: 40,
-    gravity: 1.4,
-    damping: 0.86,
+    fill: 'rgba(255,255,255,0.4)',
+    offsetY: 16,
+    gravity: 0.5,
+    damping: 0.98,
   },
   pileSquare: {
     size: 44,
@@ -478,6 +474,7 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 0.8,
   },
   route: {
+    color: 'rgba(255,255,255,0.7)',
     strokeWidth: 4,
     dashOn: 8,
     dashOff: 6,
@@ -496,9 +493,9 @@ const VISUAL_STYLES_DEFAULT = {
     headColor: '#635454',
     headOffsetY: 4,
     neckGap: 1,
-    torsoWidth: 9,
+    torsoWidth: 15,
     torsoHeight: 16,
-    torsoCornerRadius: 2,
+    torsoCornerRadius: 4,
     armWidth: 3,
     armHeight: 14,
     armColor: '#595959',
@@ -509,8 +506,9 @@ const VISUAL_STYLES_DEFAULT = {
     legHeight: 12,
     legColor: '#454545',
     legCornerRadius: 1,
-    legSeparation: 3,
-    legGap: 2,
+    legSeparation: 2,
+    legGap: 1,
+    mass: 10,
   },
   assignTriangle: {
     width: 26,
@@ -536,7 +534,7 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 2,
     dashOn: 8,
     dashOff: 4,
-    fill: 'rgba(255,255,255,0.5)',
+    fill: '#878787',
     shadowOpacity: 0.6,
   },
   slotLabel: {
@@ -585,6 +583,10 @@ const VISUAL_STYLES_DEFAULT = {
     borderColor: 'rgba(255,255,255,0.4)',
     borderWidth: 2,
     cornerRadius: 2,
+  },
+  hintText: {
+    offsetY: 194,
+    offsetX: 0,
   },
   guiPanel: {
     background: '#f3f1ed',
@@ -663,10 +665,7 @@ const VISUAL_STYLES_DEFAULT = {
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
 
-const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
-let routeColorIdx = 0;
-const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
-const consumeRouteColor = () => { const c = peekRouteColor(); routeColorIdx++; return c; };
+const routeColor = () => VISUAL_STYLES.route.color;
 
 let nodes = [];   // { id, templateId, x, y, color, items }
 let routes = [];  // { id, fromId, toId, color, workerId }
@@ -1604,14 +1603,14 @@ function drawWorker(w) {
     workerLayer.batchDraw();
   });
   grp.on('mouseleave', () => {
-    containerEl.style.cursor = MODES[currentMode].cursor;
+    if (!w.states._triDragging) containerEl.style.cursor = MODES[currentMode].cursor;
     w.states.hovered = false;
     if (!w.states._triDragging) { exitWorkerHover(); tri.visible(false); workerLayer.batchDraw(); }
   });
 
   // Triangle hitbox: cursor change on hover
   triHitbox.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; });
-  triHitbox.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; });
+  triHitbox.on('mouseleave', () => { if (!w.states._triDragging) containerEl.style.cursor = MODES[currentMode].cursor; });
 
   // Triangle hitbox: drag to assign/move worker
   triHitbox.on('mousedown', e => {
@@ -1638,7 +1637,7 @@ function drawWorker(w) {
       _prevSnapSlot = slot;
       if (slot) {
         const r = slot.findOne('Rect');
-        if (r) { r.stroke(tpl?.color || '#4a90e2'); r.strokeWidth(3); }
+        if (r) { r.stroke(routeColor()); r.strokeWidth(3); }
       }
       uiLayer.batchDraw();
     };
@@ -1651,8 +1650,47 @@ function drawWorker(w) {
     });
     uiLayer.add(trail);
 
+    // Physics ragdoll — full TLM appearance hanging from cursor with verlet integration
+    {
+      const VG0 = VISUAL_STYLES.physicsGhost;
+      const T = VISUAL_STYLES.trafficLightMan;
+      const startP = getWorldPointer() || { x: grp.x(), y: grp.y() };
+      const mk = (x, y) => ({ x, y, px: x, py: y - 0.5 });
+      const torsoColor = tpl?.color || '#888';
+      const armOffX = T.torsoWidth / 2 + T.armGap + T.armWidth / 2;
+      const legOffX = T.legSeparation / 2 + T.legWidth / 2;
+      const headX = startP.x, headY = startP.y + VG0.offsetY;
+      const nkX = headX, nkY = headY + T.headRadius + T.neckGap;
+      const tbX = nkX,   tbY = nkY + T.torsoHeight;
+      const shLx = nkX - armOffX, shLy = nkY + T.armOffsetY;
+      const shRx = nkX + armOffX, shRy = nkY + T.armOffsetY;
+      const hipLx = tbX - legOffX, hipLy = tbY + T.legGap;
+      const hipRx = tbX + legOffX, hipRy = tbY + T.legGap;
+      // Group carries uniform opacity; limbs are Konva.Rect matching real TLM geometry
+      // Pivot for each rect: top-center (offsetX=w/2, offsetY=0); rotation=0 → hangs straight down
+      const ragGrp   = new Konva.Group({ opacity: VG0.opacity, listening: false, name: 'physics-ghost-grp' });
+      const ragHead  = new Konva.Circle({ x: headX, y: headY, radius: T.headRadius, fill: T.headColor, listening: false, name: 'rag-head' });
+      const ragTorso = new Konva.Rect({ x: nkX, y: nkY, offsetX: T.torsoWidth/2, width: T.torsoWidth, height: T.torsoHeight, cornerRadius: T.torsoCornerRadius, fill: torsoColor, listening: false, name: 'rag-torso' });
+      const ragArmL  = new Konva.Rect({ x: shLx, y: shLy, offsetX: T.armWidth/2, width: T.armWidth, height: T.armHeight, cornerRadius: T.armCornerRadius, fill: T.armColor, listening: false, name: 'rag-arm-l' });
+      const ragArmR  = new Konva.Rect({ x: shRx, y: shRy, offsetX: T.armWidth/2, width: T.armWidth, height: T.armHeight, cornerRadius: T.armCornerRadius, fill: T.armColor, listening: false, name: 'rag-arm-r' });
+      const ragLegL  = new Konva.Rect({ x: hipLx, y: hipLy, offsetX: T.legWidth/2, width: T.legWidth, height: T.legHeight, cornerRadius: T.legCornerRadius, fill: T.legColor, listening: false, name: 'rag-leg-l' });
+      const ragLegR  = new Konva.Rect({ x: hipRx, y: hipRy, offsetX: T.legWidth/2, width: T.legWidth, height: T.legHeight, cornerRadius: T.legCornerRadius, fill: T.legColor, listening: false, name: 'rag-leg-r' });
+      [ragHead, ragTorso, ragArmL, ragArmR, ragLegL, ragLegR].forEach(s => ragGrp.add(s));
+      uiLayer.add(ragGrp);
+      _dragPhysAnchor.x = startP.x;
+      _dragPhysAnchor.y = startP.y;
+      _dragRagdoll = {
+        neck: mk(nkX, nkY), torsoBot: mk(tbX, tbY),
+        armL: mk(shLx, shLy + T.armHeight), armR: mk(shRx, shRy + T.armHeight),
+        legL: mk(hipLx, hipLy + T.legHeight), legR: mk(hipRx, hipRy + T.legHeight),
+        ragHead, ragTorso, ragArmL, ragArmR, ragLegL, ragLegR, ragGrp,
+      };
+    }
+
     const onTriMove = () => {
       const worldP = getWorldPointer(); if (!worldP) return;
+      _dragPhysAnchor.x = worldP.x;
+      _dragPhysAnchor.y = worldP.y;
       tri.x(worldP.x - grp.x());
       tri.y(worldP.y - grp.y() - VA.height);
       const VDP2 = VISUAL_STYLES.dragPortrait;
@@ -1688,8 +1726,11 @@ function drawWorker(w) {
     const onTriUp = () => {
       stage.off('mousemove.tridrag'); stage.off('mouseup.tridrag');
       trail.destroy();
+      if (_dragRagdoll) { _dragRagdoll.ragGrp.destroy(); _dragRagdoll = null; }
       highlightSlot(null);
       w.states._triDragging = false;
+      exitWorkerHover(); // balance the hover push that was suppressed during drag
+      containerEl.style.cursor = MODES[currentMode].cursor;
       tri.x(0); tri.y(tri._restY); tri.visible(false);
       dpGrp.visible(false); dpGrp.x(0); dpGrp.y(0);
       w.states.lifting = false;
@@ -2120,7 +2161,7 @@ function onAnchorMouseDown(e, node, anchorKey) {
 }
 function startLineDraft(fromNode) {
   cancelLineDraft();
-  const previewColor = peekRouteColor();
+  const previewColor = routeColor();
   const from = { x: fromNode.x, y: fromNode.y };
   const ghostStroke = 'rgba(255,255,255,0.55)';
   const path = new Konva.Path({ stroke: ghostStroke, strokeWidth: 4, dash: [8, 6], lineCap: 'butt', lineJoin: 'round', opacity: 0.85 });
@@ -2212,7 +2253,7 @@ stage.on('mouseup', () => {
       const route = {
         id: uid(),
         fromId: lineDraft.fromNode.id, toId: hitNode.id,
-        color: consumeRouteColor(), workerId: null,
+        workerId: null,
         allowedTypes: defaultAllowedTypes(),
         states: { recentlyCreated: true },
       };
@@ -2421,7 +2462,7 @@ function drawRoute(route) {
   const VR = VISUAL_STYLES.route;
   const path = new Konva.Path({
     data: routePathData(route),
-    stroke: route.color, strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
+    stroke: routeColor(), strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
     dash: [VR.dashOn, VR.dashOff], dashOffset: 0, name: 'routepath'
   });
   const hitbox = new Konva.Path({
@@ -2432,7 +2473,7 @@ function drawRoute(route) {
   // Wide, nearly-invisible path so route is hoverable even when routepath is hidden.
   const hoverHit = new Konva.Path({
     data: routePathData(route),
-    stroke: route.color, strokeWidth: 28, lineCap: 'round',
+    stroke: routeColor(), strokeWidth: 28, lineCap: 'round',
     opacity: 0.001, name: 'hover-hit-route',
   });
   const fromAnchor = makeMiniAnchor(route, true);
@@ -2458,9 +2499,9 @@ function drawSlotForRoute(route) {
   const slotHalf = VSR.size / 2;
   const slot = new Konva.Rect({
     x: -slotHalf, y: -slotHalf, width: VSR.size, height: VSR.size, cornerRadius: VSR.cornerRadius,
-    stroke: route.color, strokeWidth: VSR.strokeWidth, dash: [VSR.dashOn, VSR.dashOff],
+    stroke: routeColor(), strokeWidth: VSR.strokeWidth, dash: [VSR.dashOn, VSR.dashOff],
     fill: VSR.fill, visible: false, name: 'slot-rect',
-    shadowColor: route.color, shadowBlur: 0, shadowOpacity: VSR.shadowOpacity,
+    shadowColor: routeColor(), shadowBlur: 0, shadowOpacity: VSR.shadowOpacity,
   });
   const slotLabel = new Konva.Text({
     x: -VSL.width / 2, y: VSL.offsetY, width: VSL.width, text: '', align: 'center',
@@ -2477,7 +2518,7 @@ function drawSlotForRoute(route) {
   const _hhTop   = Math.min(-slotHalf, VSG.offsetY, VSD.offsetY) - 8;
   const hoverHit = new Konva.Rect({
     x: _hhLeft, y: _hhTop, width: _hhRight - _hhLeft, height: slotHalf + 8 - _hhTop,
-    fill: route.color, opacity: 0.001, name: 'hover-hit-slot',
+    fill: routeColor(), opacity: 0.001, name: 'hover-hit-slot',
   });
   // Gear icon — positioned via VISUAL_STYLES.
   const gearIcon = new Konva.Text({
@@ -2531,7 +2572,7 @@ function drawSlotForRoute(route) {
   });
   grp.on('mouseleave', () => {
     route._hoverTimer = setTimeout(() => exitRouteHover(route), 0);
-    containerEl.style.cursor = MODES[currentMode].cursor;
+    if (!_dragRagdoll) containerEl.style.cursor = MODES[currentMode].cursor;
   });
   uiLayer.add(grp);
   uiLayer.batchDraw();
@@ -3008,6 +3049,13 @@ function closeInspectPanel() {
 }
 
 // ===== HINT =====
+function applyHintPosition() {
+  const h = document.getElementById('hint'); if (!h) return;
+  const V = VISUAL_STYLES.hintText;
+  h.style.top = V.offsetY + 'px';
+  h.style.marginLeft = V.offsetX + 'px';
+}
+applyHintPosition();
 function hideHint() { document.getElementById('hint').style.display = 'none'; }
 
 // ============================================================================
@@ -3121,7 +3169,7 @@ const SPEED_PX_PER_SEC = 90;
 const DASH_SPEED_PX_PER_SEC = 40; // dashes flow from→to at this rate
 let routeDashOffset = 0;
 let tickRot = 0;
-let _dragPhysBob = null;       // { x, y, px, py, shape, rope } — active during tri drag
+let _dragRagdoll = null;        // ragdoll particles + shapes — active during tri drag
 const _dragPhysAnchor = { x: 0, y: 0 };
 const tickIndicatorEl = document.getElementById('tick-indicator');
 const anim = new Konva.Animation(frame => {
@@ -3259,31 +3307,58 @@ const anim = new Konva.Animation(frame => {
   if (routes.length > 0) {
     routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
-    uiLayer.find('.slot-rect').forEach(r => r.dashOffset(routeDashOffset));
     uiLayer.find('.drag-trail').forEach(p => p.dashOffset(routeDashOffset));
   }
-  if (_dragPhysBob) {
+  if (_dragRagdoll) {
     const VG = VISUAL_STYLES.physicsGhost;
-    const dtNorm = Math.min(frame.timeDiff / 16.67, 3);
-    const vx = (_dragPhysBob.x - _dragPhysBob.px) * VG.damping;
-    const vy = (_dragPhysBob.y - _dragPhysBob.py) * VG.damping;
-    _dragPhysBob.px = _dragPhysBob.x;
-    _dragPhysBob.py = _dragPhysBob.y;
-    _dragPhysBob.x += vx;
-    _dragPhysBob.y += vy + VG.gravity * dtNorm;
-    // Rope constraint: pull bob back within ropeLength of anchor
-    const adx = _dragPhysBob.x - _dragPhysAnchor.x;
-    const ady = _dragPhysBob.y - _dragPhysAnchor.y;
-    const adist = Math.hypot(adx, ady) || 0.001;
-    if (adist > VG.ropeLength) {
-      const nx = adx / adist, ny = ady / adist;
-      _dragPhysBob.x = _dragPhysAnchor.x + nx * VG.ropeLength;
-      _dragPhysBob.y = _dragPhysAnchor.y + ny * VG.ropeLength;
-    }
-    const ws = VISUAL_STYLES.worker.size;
-    _dragPhysBob.shape.x(_dragPhysBob.x - ws / 2);
-    _dragPhysBob.shape.y(_dragPhysBob.y - ws / 2);
-    _dragPhysBob.rope.points([_dragPhysAnchor.x, _dragPhysAnchor.y, _dragPhysBob.x, _dragPhysBob.y]);
+    const T  = VISUAL_STYLES.trafficLightMan;
+    const dtN = Math.min(frame.timeDiff / 16.67, 3);
+    const rag = _dragRagdoll;
+    const step = p => {
+      const vx = (p.x - p.px) * VG.damping, vy = (p.y - p.py) * VG.damping;
+      p.px = p.x; p.py = p.y;
+      p.x += vx; p.y += vy + VG.gravity * T.mass * dtN;
+    };
+    const pull = (p, ax, ay, dist) => {
+      const dx = p.x - ax, dy = p.y - ay, d = Math.hypot(dx, dy) || 0.001;
+      if (d > dist) { p.x = ax + dx/d * dist; p.y = ay + dy/d * dist; }
+    };
+    // Head = anchor + offsetY
+    const hx = _dragPhysAnchor.x, hy = _dragPhysAnchor.y + VG.offsetY;
+    // Neck
+    step(rag.neck); pull(rag.neck, hx, hy, T.headRadius + T.neckGap + 1);
+    // Torso bottom
+    step(rag.torsoBot); pull(rag.torsoBot, rag.neck.x, rag.neck.y, T.torsoHeight);
+    // Torso orientation
+    const tdx = rag.torsoBot.x - rag.neck.x, tdy = rag.torsoBot.y - rag.neck.y;
+    const tlen = Math.hypot(tdx, tdy) || 0.001;
+    const tx = tdx/tlen, ty = tdy/tlen;   // along torso
+    const rx = ty,       ry = -tx;         // right perp (clockwise 90°)
+    // Shoulder attachment points
+    const armOffX = T.torsoWidth/2 + T.armGap + T.armWidth/2;
+    const shLx = rag.neck.x + tx*T.armOffsetY - rx*armOffX;
+    const shLy = rag.neck.y + ty*T.armOffsetY - ry*armOffX;
+    const shRx = rag.neck.x + tx*T.armOffsetY + rx*armOffX;
+    const shRy = rag.neck.y + ty*T.armOffsetY + ry*armOffX;
+    step(rag.armL); pull(rag.armL, shLx, shLy, T.armHeight);
+    step(rag.armR); pull(rag.armR, shRx, shRy, T.armHeight);
+    // Hip attachment points
+    const legOffX = T.legSeparation/2 + T.legWidth/2;
+    const hipLx = rag.torsoBot.x + tx*T.legGap - rx*legOffX;
+    const hipLy = rag.torsoBot.y + ty*T.legGap - ry*legOffX;
+    const hipRx = rag.torsoBot.x + tx*T.legGap + rx*legOffX;
+    const hipRy = rag.torsoBot.y + ty*T.legGap + ry*legOffX;
+    step(rag.legL); pull(rag.legL, hipLx, hipLy, T.legHeight);
+    step(rag.legR); pull(rag.legR, hipRx, hipRy, T.legHeight);
+    // Update Konva shapes — rects pivot at top-center, rotation from atan2(dx,dy)
+    const ang = (sx, sy, ex, ey) => Math.atan2(ex - sx, ey - sy) * 180 / Math.PI;
+    const len = (sx, sy, ex, ey) => Math.hypot(ex - sx, ey - sy);
+    rag.ragHead.x(hx); rag.ragHead.y(hy);
+    rag.ragTorso.x(rag.neck.x); rag.ragTorso.y(rag.neck.y); rag.ragTorso.rotation(ang(rag.neck.x, rag.neck.y, rag.torsoBot.x, rag.torsoBot.y)); rag.ragTorso.height(len(rag.neck.x, rag.neck.y, rag.torsoBot.x, rag.torsoBot.y));
+    rag.ragArmL.x(shLx); rag.ragArmL.y(shLy); rag.ragArmL.rotation(ang(shLx, shLy, rag.armL.x, rag.armL.y)); rag.ragArmL.height(len(shLx, shLy, rag.armL.x, rag.armL.y));
+    rag.ragArmR.x(shRx); rag.ragArmR.y(shRy); rag.ragArmR.rotation(ang(shRx, shRy, rag.armR.x, rag.armR.y)); rag.ragArmR.height(len(shRx, shRy, rag.armR.x, rag.armR.y));
+    rag.ragLegL.x(hipLx); rag.ragLegL.y(hipLy); rag.ragLegL.rotation(ang(hipLx, hipLy, rag.legL.x, rag.legL.y)); rag.ragLegL.height(len(hipLx, hipLy, rag.legL.x, rag.legL.y));
+    rag.ragLegR.x(hipRx); rag.ragLegR.y(hipRy); rag.ragLegR.rotation(ang(hipRx, hipRy, rag.legR.x, rag.legR.y)); rag.ragLegR.height(len(hipRx, hipRy, rag.legR.x, rag.legR.y));
     dirty = true;
   }
   tickRot += 360 * dt;
@@ -3487,7 +3562,7 @@ function clearRevealGhosts() {
   revealLayer.destroyChildren();
   revealLayer.batchDraw();
   routes.forEach(route => {
-    edgeLayer.findOne('#' + route.id)?.findOne('.routepath')?.stroke(route.color);
+    edgeLayer.findOne('#' + route.id)?.findOne('.routepath')?.stroke(routeColor());
   });
 }
 
@@ -3828,7 +3903,7 @@ function serializeLevel() {
       targetX: w.targetX, targetY: w.targetY,
     })),
     viewModes: Object.fromEntries(Object.entries(VIEW_MODES).map(([k, v]) => [k, { visible: { ...v.visible } }])),
-    nextId, routeColorIdx,
+    nextId,
   };
 }
 function downloadLevel() {
@@ -3907,7 +3982,6 @@ function loadLevelData(data) {
 
   // ID counter + color rotation
   if (typeof data.nextId === 'number') nextId = data.nextId;
-  if (typeof data.routeColorIdx === 'number') routeColorIdx = data.routeColorIdx;
 
   // Stage transform
   if (data.stage) {
@@ -3963,7 +4037,7 @@ document.getElementById('btn-load-level').addEventListener('click', uploadLevel)
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
-const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-02T19:05:38.059Z","stage":{"x":0,"y":0,"scale":1},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i3","templateId":"oA","x":960,"y":360,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i4","templateId":"oA","x":800,"y":480,"color":"#2f6fd6","items":18,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"}]},{"id":"i5","templateId":"dA","x":747,"y":207,"color":"#ffffff","items":0,"shape":"building","label":"Office","scrap":[]},{"id":"i6","templateId":"dB","x":890,"y":184,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i7","templateId":"dB","x":633,"y":122,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i8","templateId":"dB","x":1282,"y":201,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i9","templateId":"dB","x":939,"y":149,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i10","templateId":"dB","x":1316,"y":286,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i11","templateId":"dB","x":1194,"y":619,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i12","templateId":"dB","x":422,"y":259,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i13","templateId":"dB","x":474,"y":676,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]}],"routes":[],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":666,"y":469,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":809,"y":883,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":14,"routeColorIdx":0};
+const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-02T20:50:11.455Z","stage":{"x":-459.1035200000008,"y":-267.40338000000054,"scale":1.6105100000000008},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i3","templateId":"oA","x":960,"y":360,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i4","templateId":"oA","x":800,"y":480,"color":"#2f6fd6","items":18,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"}]},{"id":"i5","templateId":"dA","x":747,"y":207,"color":"#ffffff","items":0,"shape":"building","label":"Office","scrap":[]},{"id":"i6","templateId":"dB","x":890,"y":184,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i7","templateId":"dB","x":633,"y":122,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i8","templateId":"dB","x":1282,"y":201,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i9","templateId":"dB","x":939,"y":149,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i10","templateId":"dB","x":1316,"y":286,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i11","templateId":"dB","x":1194,"y":619,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i12","templateId":"dB","x":422,"y":259,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i13","templateId":"dB","x":474,"y":676,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]}],"routes":[{"id":"i14","fromId":"i4","toId":"i3","workerId":null,"allowedTypes":{"wood":true,"steel":true,"plastic":true}}],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":520,"y":400,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":809,"y":883,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":15};
 let metaOpen = true;
 
 function toggleMetaControls() {
@@ -4052,6 +4126,7 @@ const VS_TYPE_LABELS = {
   tickIndicator: 'Tick Indicator',
   miniAnchor: 'Mini Anchor',
   trafficLightMan: 'Traffic-Light Man',
+  hintText: 'Hint Text',
   assignTriangle: 'Assign Triangle',
   dragPortrait: 'Drag Portrait',
   physicsGhost: 'Physics Ghost',
@@ -4529,15 +4604,18 @@ function applyVisualStyles(typeKey) {
       break;
     }
     case 'route': {
+      const rc = routeColor();
       routes.forEach(j => {
         const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
         const pd = routePathData(j);
         const rp = grp.findOne('.routepath');
-        if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); }
+        if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); rp.stroke(rc); }
         grp.findOne('.hitbox-route')?.data(pd);
         grp.findOne('.hover-hit-route')?.data(pd);
       });
+      stage.find('.slot-rect').forEach(r => { r.stroke(rc); r.shadowColor(rc); });
       edgeLayer.batchDraw();
+      uiLayer.batchDraw();
       break;
     }
     case 'slotRect': {
@@ -4612,6 +4690,12 @@ function applyVisualStyles(typeKey) {
         });
         workerLayer.batchDraw();
       }
+      break;
+    }
+    case 'hintText': { applyHintPosition(); break; }
+    case 'physicsGhost': {
+      const g = uiLayer.findOne('.physics-ghost-grp');
+      if (g) { g.opacity(V.opacity); uiLayer.batchDraw(); }
       break;
     }
     case 'dragPortrait': {
