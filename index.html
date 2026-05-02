@@ -113,7 +113,7 @@
   .vs-prop-row label { flex: 1; color: #aaa; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vs-prop-row label.changed { color: #7ab4f5; font-weight: 600; }
   .vs-prop-input { background: #1e2028; border: 1px solid #333; color: #ddd; padding: 2px 6px; border-radius: 3px; font-size: 11px; width: 100px; box-sizing: border-box; }
-  .vs-prop-input.color-text { width: 130px; font-family: monospace; }
+  .vs-prop-input.color-text { width: 90px; font-family: monospace; }
   .vs-prop-color-swatch { width: 18px; height: 18px; border-radius: 3px; border: 1px solid #444; cursor: pointer; flex-shrink: 0; padding: 0; background: transparent; }
   .vs-prop-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
   .vs-prop-color-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
@@ -432,7 +432,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#118';
+const APP_VERSION = '0.1.2#121';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -715,6 +715,7 @@ let recentlyCreatedRouteId = null;
 let _filterPanel = null;
 let _filterGhost = null;
 let _anchorDragState = null;
+let _hitboxDebugLayer = null;
 function holdRouteView(routeId) {
   if (routeViewHeld) return;
   routeViewHeld = true;
@@ -2446,7 +2447,6 @@ function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
     if (grp) {
       const pd = routePathData(route);
       grp.findOne('.routepath')?.data(pd);
-      grp.findOne('.hitbox-route')?.data(pd);
       grp.findOne('.hover-hit-route')?.data(pd);
     }
     const wp = routeWaypoints(route);
@@ -2538,11 +2538,6 @@ function drawRoute(route) {
     stroke: routeColor(), strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
     dash: [VR.dashOn, VR.dashOff], dashOffset: 0, name: 'routepath'
   });
-  const hitbox = new Konva.Path({
-    data: routePathData(route),
-    stroke: 'rgba(200,200,200,0.6)', strokeWidth: 8, lineCap: 'round', lineJoin: 'round',
-    dash: [3, 3], listening: false, name: 'hitbox-route', visible: false
-  });
   // Wide, nearly-invisible path so route is hoverable even when routepath is hidden.
   const hoverHit = new Konva.Path({
     data: routePathData(route),
@@ -2551,7 +2546,7 @@ function drawRoute(route) {
   });
   const fromAnchor = makeMiniAnchor(route, true);
   const toAnchor   = makeMiniAnchor(route, false);
-  grp.add(path, hitbox, hoverHit, fromAnchor, toAnchor);
+  grp.add(path, hoverHit, fromAnchor, toAnchor);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
   grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); enterRouteHover(route); });
   grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => exitRouteHover(route), 0); });
@@ -2656,8 +2651,6 @@ function redrawRoutesTouching(nodeId) {
     const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
     const ep = routeEndpoints(j); if (!ep) return;
     grp.findOne('.routepath').data(routePathData(j));
-    const rhb = grp.findOne('.hitbox-route');
-    if (rhb) rhb.data(routePathData(j));
     const hhit = grp.findOne('.hover-hit-route');
     if (hhit) hhit.data(routePathData(j));
     const fromA = getRouteAnchor(j, j.fromId);
@@ -3463,7 +3456,52 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     setGamePaused(!gamePaused);
   }
+  if ((e.key === 'h' || e.key === 'H') && !e.repeat) showHitboxDebug();
 });
+document.addEventListener('keyup', e => {
+  if (e.key === 'h' || e.key === 'H') hideHitboxDebug();
+});
+
+function showHitboxDebug() {
+  if (_hitboxDebugLayer) return;
+  _hitboxDebugLayer = new Konva.Layer({ listening: false });
+  stage.add(_hitboxDebugLayer);
+  const HITBOX_NAMES = [
+    'hitbox-pile', 'anchor-hit', 'hitbox-worker', 'hitbox-tri',
+    'hover-hit-route', 'hitbox-slot', 'hover-hit-slot',
+    'slot-delhit', 'slot-gearhit',
+  ];
+  const sx = stage.scaleX(), sy = stage.scaleY();
+  const spx = stage.x(), spy = stage.y();
+  const pink = 'rgba(255,80,200,0.35)';
+  const pinkStroke = 'rgba(255,100,220,0.95)';
+  for (const layer of [gridLayer, nodeLayer, edgeLayer, uiLayer, workerLayer]) {
+    for (const name of HITBOX_NAMES) {
+      layer.find('.' + name).forEach(shape => {
+        const r = shape.getClientRect();
+        const wx = (r.x - spx) / sx, wy = (r.y - spy) / sy;
+        const ww = r.width / sx, wh = r.height / sy;
+        _hitboxDebugLayer.add(new Konva.Rect({
+          x: wx, y: wy, width: ww, height: wh,
+          fill: pink, stroke: pinkStroke, strokeWidth: 1.5 / sx,
+          listening: false,
+        }));
+        _hitboxDebugLayer.add(new Konva.Text({
+          x: wx + 2 / sx, y: wy + 2 / sy,
+          text: name, fontSize: 9 / sx,
+          fill: 'rgba(255,180,255,0.95)', listening: false,
+        }));
+      });
+    }
+  }
+  _hitboxDebugLayer.batchDraw();
+}
+
+function hideHitboxDebug() {
+  if (!_hitboxDebugLayer) return;
+  _hitboxDebugLayer.destroy();
+  _hitboxDebugLayer = null;
+}
 
 // ===== DEBUG PANEL =====
 // Physical objects (workers, piles, scrap) are always visible — never toggled by view mode.
@@ -4683,7 +4721,6 @@ function applyVisualStyles(typeKey) {
         const pd = routePathData(j);
         const rp = grp.findOne('.routepath');
         if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); rp.stroke(rc); }
-        grp.findOne('.hitbox-route')?.data(pd);
         grp.findOne('.hover-hit-route')?.data(pd);
       });
       stage.find('.slot-rect').forEach(r => { r.stroke(rc); r.shadowColor(rc); });
@@ -4802,7 +4839,6 @@ function applyVisualStyles(typeKey) {
         const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
         const pd = routePathData(j);
         grp.findOne('.routepath')?.data(pd);
-        grp.findOne('.hitbox-route')?.data(pd);
         grp.findOne('.hover-hit-route')?.data(pd);
       });
       edgeLayer.batchDraw();
