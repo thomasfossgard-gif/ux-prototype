@@ -87,6 +87,7 @@
   .gp-tab.active { color: #fff; border-bottom-color: #4a90e2; }
   #gp-content { flex: 1; overflow-y: auto; padding: 12px; }
   #gp-visuals-pane { flex: 1; overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
+  #gp-visuals-pane[hidden], #gp-content[hidden] { display: none; }
   #vs-toolbar { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #1c1c1c; flex-shrink: 0; flex-wrap: wrap; }
   #vs-toolbar input { flex: 1; min-width: 0; background: #1e2028; border: 1px solid #333; color: #ddd; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
   #vs-toolbar button { padding: 4px 10px; background: #2c313c; border: 1px solid #444; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 11px; }
@@ -408,7 +409,7 @@ const palette = {
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
 };
-const APP_VERSION = '0.1.2#76';
+const APP_VERSION = '0.1.2#77';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -417,7 +418,7 @@ const APP_VERSION = '0.1.2#76';
 // from here so newly created shapes pick up edits too.
 const VISUAL_STYLES_DEFAULT = {
   worker: {
-    size: 32,
+    size: 28,
     cornerRadius: 6,
     strokeColor: 'rgba(255,255,255,0.35)',
     strokeWidth: 1.5,
@@ -453,11 +454,11 @@ const VISUAL_STYLES_DEFAULT = {
     dashOff: 6,
   },
   slotRect: {
-    size: 44,
+    size: 40,
     cornerRadius: 7,
     strokeWidth: 2,
-    dashOn: 14,
-    dashOff: 8,
+    dashOn: 8,
+    dashOff: 4,
     fill: 'rgba(255,255,255,0.06)',
     shadowOpacity: 0.6,
   },
@@ -469,11 +470,11 @@ const VISUAL_STYLES_DEFAULT = {
   },
   slotGear: {
     text: '⚙',
-    fontSize: 12,
+    fontSize: 16,
     color: '#fff',
     restOpacity: 0.35,
-    offsetX: 25,
-    offsetY: -36,
+    offsetX: 16,
+    offsetY: -34,
   },
   slotDelete: {
     text: '✕',
@@ -481,8 +482,8 @@ const VISUAL_STYLES_DEFAULT = {
     color: '#fff',
     restOpacity: 0.35,
     hoverFill: 'rgba(220,60,60,0.5)',
-    offsetX: -34,
-    offsetY: -36,
+    offsetX: -28,
+    offsetY: -32,
   },
   carryIndicator: {
     radius: 6,
@@ -1439,6 +1440,7 @@ function gpSectionTitle(label) {
 
 function showNodeInGpPanel(node) {
   if (!gpOpen) toggleGpPanel();
+  if (typeof gpSwitchTab === 'function') gpSwitchTab('gameplay');
   const content = document.getElementById('gp-content');
   content.innerHTML = gpSectionTitle('Pile') + gpPanelTable([
     ['ID',       node.id],
@@ -1450,6 +1452,7 @@ function showNodeInGpPanel(node) {
 
 function showWorkerInGpPanel(w) {
   if (!gpOpen) toggleGpPanel();
+  if (typeof gpSwitchTab === 'function') gpSwitchTab('gameplay');
   const tpl = palette.workers.find(t => t.id === w.templateId);
   const name = tpl?.name ?? '';
   const route = routes.find(r => r.id === w.routeId);
