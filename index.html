@@ -432,7 +432,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#117';
+const APP_VERSION = '0.1.2#118';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -536,11 +536,9 @@ const VISUAL_STYLES_DEFAULT = {
     dashOff: 4,
     fill: '#878787',
     shadowOpacity: 0.6,
-  },
-  slotHover: {
-    strokeColor: '#ffffff',
-    strokeWidth: 3,
-    fill: '#4a4a4a',
+    hoverStrokeColor: '#ffffff',
+    hoverStrokeWidth: 3,
+    hoverFill: '#4a4a4a',
   },
   slotLabel: {
     fontSize: 10,
@@ -1642,7 +1640,7 @@ function drawWorker(w) {
       _prevSnapSlot = slot;
       if (slot) {
         const r = slot.findOne('Rect');
-        if (r) { r.stroke(VISUAL_STYLES.slotHover.strokeColor); r.strokeWidth(VISUAL_STYLES.slotHover.strokeWidth); r.fill(VISUAL_STYLES.slotHover.fill); }
+        if (r) { r.stroke(VISUAL_STYLES.slotRect.hoverStrokeColor); r.strokeWidth(VISUAL_STYLES.slotRect.hoverStrokeWidth); r.fill(VISUAL_STYLES.slotRect.hoverFill); }
       }
       uiLayer.batchDraw();
     };
@@ -2388,26 +2386,62 @@ function flashAnchorReject(circle) {
 }
 
 function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
-  const nodeId = isFromEnd ? route.fromId : route.toId;
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return;
-  const original = getPileAnchors(nodeId)[route.id];
+  const origNodeId = isFromEnd ? route.fromId : route.toId;
+  const origNode = nodes.find(n => n.id === origNodeId);
+  if (!origNode) return;
+  const original = getPileAnchors(origNodeId)[route.id];
   if (!original) return;
+  const VMA = VISUAL_STYLES.miniAnchor;
+  const SNAP_R = VISUAL_STYLES.pileSquare.size * 1.8;
   _anchorDragState = {
-    route, isFromEnd, nodeId, node, anchorShape,
+    route, isFromEnd, anchorShape,
+    nodeId: origNodeId, node: origNode,
+    targetNode: origNode,
     originalSide: isFromEnd ? route.fromSide : route.toSide,
     x: original.x, y: original.y, side: original.side,
+    snapped: false, freeX: original.x, freeY: original.y,
   };
   containerEl.style.cursor = 'grabbing';
 
   const onMove = () => {
     if (!_anchorDragState) return;
     const p = getWorldPointer(); if (!p) return;
-    const proj = pointOnPerimeter(node, p.x, p.y);
-    _anchorDragState.x = proj.x;
-    _anchorDragState.y = proj.y;
-    _anchorDragState.side = proj.side;
-    anchorShape.position({ x: proj.x, y: proj.y });
+    _anchorDragState.freeX = p.x;
+    _anchorDragState.freeY = p.y;
+
+    // Find nearest rect-pile within snap radius
+    let bestNode = null, bestDist = Infinity;
+    for (const nd of nodes) {
+      if (nd.shape !== 'rect') continue;
+      const dx = nd.x - p.x, dy = nd.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < SNAP_R && d < bestDist) { bestDist = d; bestNode = nd; }
+    }
+
+    const prevTargetId = _anchorDragState.targetNode?.id;
+    if (bestNode) {
+      _anchorDragState.targetNode = bestNode;
+      _anchorDragState.snapped = true;
+      const proj = pointOnPerimeter(bestNode, p.x, p.y);
+      _anchorDragState.x = proj.x;
+      _anchorDragState.y = proj.y;
+      _anchorDragState.side = proj.side;
+      anchorShape.position({ x: proj.x, y: proj.y });
+      anchorShape.stroke(bestNode.id !== origNodeId ? '#4cf' : VMA.strokeColor);
+    } else {
+      _anchorDragState.targetNode = null;
+      _anchorDragState.snapped = false;
+      anchorShape.position({ x: p.x, y: p.y });
+      anchorShape.stroke('#f84');
+    }
+
+    // Preview the route live using a temporary patch
+    const savedFrom = route.fromId, savedTo = route.toId;
+    const savedFromSide = route.fromSide, savedToSide = route.toSide;
+    if (_anchorDragState.snapped && _anchorDragState.targetNode) {
+      if (isFromEnd) { route.fromId = _anchorDragState.targetNode.id; route.fromSide = _anchorDragState.side; }
+      else           { route.toId   = _anchorDragState.targetNode.id; route.toSide   = _anchorDragState.side; }
+    }
     const grp = edgeLayer.findOne('#' + route.id);
     if (grp) {
       const pd = routePathData(route);
@@ -2421,6 +2455,9 @@ function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
       const slot = uiLayer.findOne('#slot_' + route.id);
       if (slot) slot.position({ x: mid.x, y: mid.y });
     }
+    route.fromId = savedFrom; route.toId = savedTo;
+    route.fromSide = savedFromSide; route.toSide = savedToSide;
+
     edgeLayer.batchDraw();
     uiLayer.batchDraw();
   };
@@ -2433,24 +2470,55 @@ function startMiniAnchorDrag(route, isFromEnd, anchorShape) {
 
   const onUp = () => {
     if (!_anchorDragState) { cleanup(); return; }
-    const newSide = _anchorDragState.side;
-    const original = _anchorDragState.originalSide;
-    let rejected = false;
-    if (newSide !== original) {
-      const sideCount = countSideRoutes(nodeId, newSide, route.id);
-      if (sideCount >= 4) {
-        rejected = true;
-      } else {
+    const ds = _anchorDragState;
+    const shape = ds.anchorShape;
+    const prevFromId = route.fromId, prevToId = route.toId;
+
+    if (!ds.snapped || !ds.targetNode) {
+      // Dropped in free space — reject
+      _anchorDragState = null;
+      containerEl.style.cursor = MODES[currentMode].cursor;
+      shape.stroke(VMA.strokeColor);
+      flashAnchorReject(shape);
+      redrawRoutesTouching(route.fromId);
+      if (route.fromId !== route.toId) redrawRoutesTouching(route.toId);
+      cleanup();
+      return;
+    }
+
+    const newNode = ds.targetNode;
+    const newSide = ds.side;
+
+    if (newNode.id !== origNodeId) {
+      // Moving to a different pile
+      if (isFromEnd) { route.fromId = newNode.id; route.fromSide = newSide; }
+      else           { route.toId   = newNode.id; route.toSide   = newSide; }
+      ensureRouteSides(route);
+    } else {
+      // Same pile — side change only
+      const originalSide = ds.originalSide;
+      if (newSide !== originalSide) {
+        const sideCount = countSideRoutes(origNodeId, newSide, route.id);
+        if (sideCount >= 4) {
+          _anchorDragState = null;
+          containerEl.style.cursor = MODES[currentMode].cursor;
+          shape.stroke(VMA.strokeColor);
+          flashAnchorReject(shape);
+          redrawRoutesTouching(route.fromId);
+          if (route.fromId !== route.toId) redrawRoutesTouching(route.toId);
+          cleanup();
+          return;
+        }
         if (isFromEnd) route.fromSide = newSide;
         else           route.toSide   = newSide;
       }
     }
-    const shape = _anchorDragState.anchorShape;
+
     _anchorDragState = null;
     containerEl.style.cursor = MODES[currentMode].cursor;
-    if (rejected) flashAnchorReject(shape);
-    redrawRoutesTouching(route.fromId);
-    if (route.fromId !== route.toId) redrawRoutesTouching(route.toId);
+    shape.stroke(VMA.strokeColor);
+    const allIds = new Set([prevFromId, prevToId, route.fromId, route.toId]);
+    for (const id of allIds) redrawRoutesTouching(id);
     cleanup();
   };
 
@@ -4123,7 +4191,6 @@ const VS_TYPE_LABELS = {
   pileStackPiece: 'Pile Stack Piece',
   route: 'Route Path',
   slotRect: 'Slot Body',
-  slotHover: 'Slot Hover',
   slotLabel: 'Slot Label',
   slotGear: 'Slot Gear Icon',
   slotDelete: 'Slot Delete Icon',
@@ -4638,9 +4705,6 @@ function applyVisualStyles(typeKey) {
       uiLayer.batchDraw();
       break;
     }
-    case 'slotHover':
-      // Hover styles are applied dynamically during drag-to-assign, no permanent shape updates needed.
-      break;
     case 'slotLabel': {
       stage.find('.slot-label').forEach(t => {
         t.fontSize(V.fontSize); t.fill(V.color);
