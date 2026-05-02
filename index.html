@@ -82,7 +82,40 @@
   }
   #gp-panel-header button { background: none; border: none; color: #555; cursor: pointer; font-size: 16px; line-height: 1; }
   #gp-panel-header button:hover { color: #fff; }
+  #gp-tab-bar { display: flex; border-bottom: 1px solid #1c1c1c; flex-shrink: 0; }
+  .gp-tab { flex: 1; padding: 7px; background: none; border: none; border-bottom: 2px solid transparent; color: #666; cursor: pointer; font-size: 11px; font-weight: 600; }
+  .gp-tab.active { color: #fff; border-bottom-color: #4a90e2; }
   #gp-content { flex: 1; overflow-y: auto; padding: 12px; }
+  #gp-visuals-pane { flex: 1; overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
+  #vs-toolbar { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #1c1c1c; flex-shrink: 0; flex-wrap: wrap; }
+  #vs-toolbar input { flex: 1; min-width: 0; background: #1e2028; border: 1px solid #333; color: #ddd; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+  #vs-toolbar button { padding: 4px 10px; background: #2c313c; border: 1px solid #444; color: #ccc; cursor: pointer; border-radius: 4px; font-size: 11px; }
+  #vs-toolbar button:hover { background: #3a4150; color: #fff; }
+  #vs-list { flex: 1; overflow-y: auto; }
+  .vs-type-row { border-bottom: 1px solid #1c1c1c; }
+  .vs-type-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; user-select: none; background: #2b2b2b; }
+  .vs-type-header:hover { background: #353535; }
+  .vs-type-header.dirty { background: rgba(74,144,226,0.08); }
+  .vs-type-name { font-size: 12px; color: #ddd; font-weight: 600; text-transform: capitalize; }
+  .vs-type-meta { font-size: 10px; color: #666; }
+  .vs-type-meta.dirty { color: #7ab4f5; font-weight: 700; }
+  .vs-type-arrow { color: #555; font-size: 9px; margin-left: 6px; transition: transform 0.12s; }
+  .vs-type-arrow.open { transform: rotate(90deg); }
+  .vs-type-body { padding: 6px 12px 10px; background: #232323; display: none; }
+  .vs-type-body.open { display: block; }
+  .vs-prop-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+  .vs-prop-row label { flex: 1; color: #aaa; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vs-prop-row label.changed { color: #7ab4f5; font-weight: 600; }
+  .vs-prop-input { background: #1e2028; border: 1px solid #333; color: #ddd; padding: 2px 6px; border-radius: 3px; font-size: 11px; width: 100px; box-sizing: border-box; }
+  .vs-prop-input.color-text { width: 130px; font-family: monospace; }
+  .vs-prop-color-swatch { width: 18px; height: 18px; border-radius: 3px; border: 1px solid #444; cursor: pointer; flex-shrink: 0; padding: 0; background: transparent; }
+  .vs-prop-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+  .vs-prop-color-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
+  .vs-prop-reset { background: none; border: none; color: #555; cursor: pointer; font-size: 12px; padding: 0 4px; }
+  .vs-prop-reset:hover { color: #fff; }
+  .vs-type-actions { display: flex; gap: 6px; padding-top: 8px; }
+  .vs-type-actions button { font-size: 10px; padding: 3px 8px; background: #2c313c; border: 1px solid #444; color: #aaa; cursor: pointer; border-radius: 3px; }
+  .vs-type-actions button:hover { color: #fff; background: #3a4150; }
   /* ===== DEBUG PANEL ===== */
   #debug-panel {
     position: fixed; right: 0; top: 0; bottom: 0; width: 280px;
@@ -322,10 +355,22 @@
 </div>
 <div id="gp-panel">
   <div id="gp-panel-header">
-    <span>Gameplay Properties</span>
+    <span>Properties</span>
     <button onclick="toggleGpPanel()">&times;</button>
   </div>
+  <div id="gp-tab-bar">
+    <button class="gp-tab active" data-gp-tab="gameplay">Gameplay</button>
+    <button class="gp-tab" data-gp-tab="visuals">Visuals</button>
+  </div>
   <div id="gp-content">
+  </div>
+  <div id="gp-visuals-pane" hidden>
+    <div id="vs-toolbar">
+      <input id="vs-search" type="text" placeholder="Filter…">
+      <button id="vs-copy-all" title="Copy a Claude prompt describing every changed visual property">Copy Prompt</button>
+      <button id="vs-reset-all" title="Reset every property to its default">Reset All</button>
+    </div>
+    <div id="vs-list"></div>
   </div>
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
@@ -364,6 +409,109 @@ const palette = {
   ],
 };
 const APP_VERSION = '0.1.2#76';
+
+// ===== VISUAL STYLES =====
+// Single source of truth for the visual properties of every non-menu object type.
+// The Visuals tab in the gameplay panel reads/writes this and pushes updates into
+// existing Konva shapes via applyVisualStyles(). Refactored draw* functions read
+// from here so newly created shapes pick up edits too.
+const VISUAL_STYLES_DEFAULT = {
+  worker: {
+    size: 32,
+    cornerRadius: 6,
+    strokeColor: 'rgba(255,255,255,0.35)',
+    strokeWidth: 1.5,
+    portraitZoom: 1.2,
+    labelFontSize: 10,
+    labelColor: 'rgba(255,255,255,0.75)',
+    labelOffsetY: 3,
+  },
+  workerGhost: {
+    fill: 'rgba(255,255,255,0.3)',
+    strokeColor: 'rgba(255,255,255,0.08)',
+    strokeWidth: 1.5,
+    cornerRadius: 6,
+  },
+  pileSquare: {
+    size: 44,
+    cornerRadius: 0,
+    strokeWidth: 1.5,
+    dotPatternColor: 'rgba(255,255,255,0.22)',
+  },
+  pileTriangle: {
+    radius: 6,
+    strokeWidth: 1,
+  },
+  pileStackPiece: {
+    radius: 6,
+    strokeColor: 'rgba(255,255,255,0.18)',
+    strokeWidth: 0.8,
+  },
+  route: {
+    strokeWidth: 4,
+    dashOn: 8,
+    dashOff: 6,
+  },
+  slotRect: {
+    size: 44,
+    cornerRadius: 7,
+    strokeWidth: 2,
+    dashOn: 14,
+    dashOff: 8,
+    fill: 'rgba(255,255,255,0.06)',
+    shadowOpacity: 0.6,
+  },
+  slotLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.5)',
+    offsetY: 25,
+    width: 80,
+  },
+  slotGear: {
+    text: '⚙',
+    fontSize: 12,
+    color: '#fff',
+    restOpacity: 0.35,
+    offsetX: 25,
+    offsetY: -36,
+  },
+  slotDelete: {
+    text: '✕',
+    fontSize: 12,
+    color: '#fff',
+    restOpacity: 0.35,
+    hoverFill: 'rgba(220,60,60,0.5)',
+    offsetX: -34,
+    offsetY: -36,
+  },
+  carryIndicator: {
+    radius: 6,
+    strokeColor: 'rgba(255,255,255,0.7)',
+    strokeWidth: 1,
+    spacing: 13,
+    offsetY: -26,
+  },
+  speechBubble: {
+    fontSize: 7,
+    fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
+    textColor: '#1a1a1a',
+    background: '#fff',
+    cornerRadius: 3,
+    padding: 3,
+    shadowColor: 'rgba(0,0,0,0.3)',
+    shadowBlur: 3,
+    durationMs: 1500,
+  },
+  tickIndicator: {
+    size: 10,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderWidth: 2,
+    cornerRadius: 2,
+  },
+};
+// Deep clone so the live config can be mutated without losing the canonical defaults.
+const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
+
 const ROUTE_COLORS = ['#e63946','#f4a261','#2a9d8f','#e76f51','#9d4edd','#06d6a0','#ef476f','#118ab2','#ffd166','#ff7f50'];
 let routeColorIdx = 0;
 const peekRouteColor = () => ROUTE_COLORS[routeColorIdx % ROUTE_COLORS.length];
@@ -951,25 +1099,28 @@ function setWorkerState(w, key, value) {
   workerLayer.batchDraw();
 }
 
-const PILE_DOT_PATTERN = (() => {
+function buildPileDotPattern(color) {
   const c = document.createElement('canvas');
   c.width = 6; c.height = 6;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillStyle = color;
   ctx.fillRect(2, 2, 1, 1);
   return c;
-})();
+}
+let PILE_DOT_PATTERN = buildPileDotPattern(VISUAL_STYLES.pileSquare.dotPatternColor);
 function drawNode(node) {
   const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
   const isTriangle = node.shape === 'triangle';
+  const VS = VISUAL_STYLES.pileSquare, VT = VISUAL_STYLES.pileTriangle;
+  const half = VS.size / 2;
   const shape = isTriangle
-    ? new Konva.RegularPolygon({ sides: 3, radius: 6, fill: node.color, stroke: node.color, strokeWidth: 1, name: 'nodeshape' })
-    : new Konva.Rect({ x: -22, y: -22, width: 44, height: 44, cornerRadius: 0, fill: node.color, stroke: node.color, strokeWidth: 1.5, name: 'nodeshape' });
+    ? new Konva.RegularPolygon({ sides: 3, radius: VT.radius, fill: node.color, stroke: node.color, strokeWidth: VT.strokeWidth, name: 'nodeshape' })
+    : new Konva.Rect({ x: -half, y: -half, width: VS.size, height: VS.size, cornerRadius: VS.cornerRadius, fill: node.color, stroke: node.color, strokeWidth: VS.strokeWidth, name: 'nodeshape' });
   const hitbox = new Konva.Circle({ radius: isTriangle ? 10 : 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
   const anchorHit = new Konva.Circle({ radius: 11, fill: 'transparent', name: 'anchor-hit' });
   const stack = new Konva.Group({ name: 'stack' });
   if (!isTriangle) {
-    const tex = new Konva.Rect({ x: -20, y: -20, width: 40, height: 40, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
+    const tex = new Konva.Rect({ x: -(half - 2), y: -(half - 2), width: VS.size - 4, height: VS.size - 4, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
     grp.add(shape, tex, hitbox, anchorHit, stack);
   } else {
     grp.add(shape, hitbox, anchorHit, stack);
@@ -1005,13 +1156,14 @@ function updateNodeStack(node) {
   if (!grp) return;
   const stack = grp.findOne('.stack');
   stack.destroyChildren();
+  const VP = VISUAL_STYLES.pileStackPiece;
   (node.scrap || []).forEach((piece, i) => {
     const tpl = SCRAP_TYPES.find(t => t.id === piece.type);
     const color = tpl?.color ?? '#f1c40f';
     const { x, y, rot } = scrapPieceRand(node.id, i);
     stack.add(new Konva.RegularPolygon({
-      x, y, sides: 3, radius: 6, rotation: rot,
-      fill: color, stroke: 'rgba(255,255,255,0.18)', strokeWidth: 0.8, listening: false,
+      x, y, sides: 3, radius: VP.radius, rotation: rot,
+      fill: color, stroke: VP.strokeColor, strokeWidth: VP.strokeWidth, listening: false, name: 'stackpiece',
     }));
   });
   nodeLayer.batchDraw();
@@ -1035,29 +1187,30 @@ function drawWorker(w) {
   const name = tpl?.name ?? '';
   const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
 
-  const S = 16; // half-size: worker is 32×32
+  const VW = VISUAL_STYLES.worker, VG = VISUAL_STYLES.workerGhost, VC = VISUAL_STYLES.carryIndicator;
+  const S = VW.size / 2;
   const img = WORKER_PORTRAITS[name];
   const iw = img?.naturalWidth || 128, ih = img?.naturalHeight || 128;
-  const zoom = 1.2, cw = iw / zoom, ch = ih / zoom;
+  const zoom = VW.portraitZoom, cw = iw / zoom, ch = ih / zoom;
   const grp = new Konva.Group({ x: w.x, y: w.y, id: w.id, name: 'worker' });
   const c = new Konva.Image({
-    image: img, x: -S, y: -S, width: S*2, height: S*2, cornerRadius: 6,
+    image: img, x: -S, y: -S, width: S*2, height: S*2, cornerRadius: VW.cornerRadius,
     cropX: (iw - cw) / 2, cropY: (ih - ch) / 2, cropWidth: cw, cropHeight: ch,
-    stroke: 'rgba(255,255,255,0.35)', strokeWidth: 1.5, name: 'workercircle',
+    stroke: VW.strokeColor, strokeWidth: VW.strokeWidth, name: 'workercircle',
   });
   const hitbox = new Konva.Rect({ x: -S, y: -S, width: S*2, height: S*2, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
   // carry indicator: one fixed triangle slot per scrap type, shown above head
-  const carry = new Konva.Group({ y: -S - 10, name: 'carry' });
+  const carry = new Konva.Group({ y: VC.offsetY, name: 'carry' });
   SCRAP_TYPES.forEach((t, i) => {
-    const offsetX = (i - (SCRAP_TYPES.length - 1) / 2) * 13;
+    const offsetX = (i - (SCRAP_TYPES.length - 1) / 2) * VC.spacing;
     carry.add(new Konva.RegularPolygon({
-      x: offsetX, y: 0, sides: 3, radius: 6,
-      fill: t.color, stroke: 'rgba(255,255,255,0.7)', strokeWidth: 1,
+      x: offsetX, y: 0, sides: 3, radius: VC.radius,
+      fill: t.color, stroke: VC.strokeColor, strokeWidth: VC.strokeWidth,
       listening: false, visible: false, name: 'carry-' + t.id,
     }));
   });
   if (displayName) {
-    const label = new Konva.Text({ text: displayName, fontSize: 10, fontFamily: 'system-ui, sans-serif', fill: 'rgba(255,255,255,0.75)', y: S + 3, listening: false, name: 'workerlabel' });
+    const label = new Konva.Text({ text: displayName, fontSize: VW.labelFontSize, fontFamily: 'system-ui, sans-serif', fill: VW.labelColor, y: S + VW.labelOffsetY, listening: false, name: 'workerlabel' });
     label.x(-label.width() / 2);
     grp.add(label);
   }
@@ -1071,9 +1224,9 @@ function drawWorker(w) {
   // Per-worker ghost — same body shape, white at 30% opacity. Persistent shape, hidden by default.
   // Visible while lifting (follows cursor) and while the worker is walking toward its commanded target.
   const ghostBody = new Konva.Rect({
-    x: -S, y: -S, width: S*2, height: S*2, cornerRadius: 6,
-    fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1.5,
-    listening: false,
+    x: -S, y: -S, width: S*2, height: S*2, cornerRadius: VG.cornerRadius,
+    fill: VG.fill, stroke: VG.strokeColor, strokeWidth: VG.strokeWidth,
+    listening: false, name: 'ghostbody',
   });
   const ghostGrp = new Konva.Group({
     x: w.x, y: w.y, id: 'ghost_' + w.id, name: 'worker-ghost',
@@ -1107,21 +1260,22 @@ function hideGhost(w) {
 function workerSay(w, text) {
   const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
   grp.findOne('.speechbubble')?.destroy();
-  const pad = 3, tailW = 4, tailH = 3;
+  const VSB = VISUAL_STYLES.speechBubble;
+  const pad = VSB.padding, tailW = 4, tailH = 3;
   const bubble = new Konva.Group({ name: 'speechbubble', listening: false });
   const label = new Konva.Text({
-    text, fontSize: 7, fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
-    fontStyle: 'bold', fill: '#1a1a1a', listening: false,
+    text, fontSize: VSB.fontSize, fontFamily: VSB.fontFamily,
+    fontStyle: 'bold', fill: VSB.textColor, listening: false,
   });
   const tw = label.width(), th = label.height();
-  const bg = new Konva.Rect({ x: 0, y: 0, width: tw + pad * 2, height: th + pad * 2, fill: '#fff', cornerRadius: 3, shadowColor: 'rgba(0,0,0,0.3)', shadowBlur: 3, shadowOffsetY: 1, listening: false });
-  const tail = new Konva.Line({ points: [0, (th + pad * 2) / 2 - tailH / 2, -tailW, (th + pad * 2) / 2, 0, (th + pad * 2) / 2 + tailH / 2], fill: '#fff', closed: true, listening: false });
+  const bg = new Konva.Rect({ x: 0, y: 0, width: tw + pad * 2, height: th + pad * 2, fill: VSB.background, cornerRadius: VSB.cornerRadius, shadowColor: VSB.shadowColor, shadowBlur: VSB.shadowBlur, shadowOffsetY: 1, listening: false });
+  const tail = new Konva.Line({ points: [0, (th + pad * 2) / 2 - tailH / 2, -tailW, (th + pad * 2) / 2, 0, (th + pad * 2) / 2 + tailH / 2], fill: VSB.background, closed: true, listening: false });
   label.position({ x: pad, y: pad });
   bubble.add(bg, tail, label);
   bubble.position({ x: 12, y: -(th / 2 + pad) });
   grp.add(bubble);
   workerLayer.batchDraw();
-  setTimeout(() => { bubble.destroy(); workerLayer.batchDraw(); }, 1500);
+  setTimeout(() => { bubble.destroy(); workerLayer.batchDraw(); }, VSB.durationMs);
 }
 
 function updateWorkerVisual(w) {
@@ -1485,31 +1639,15 @@ function slotStatusText(route) {
 }
 
 // ===== ROUTE HOVER (shared by route path and slot) =====
-function showRouteHover(route) {
-  const routeGrp = edgeLayer.findOne('#' + route.id);
-  const slotGrp  = uiLayer.findOne('#slot_' + route.id);
-  let dirty = false;
-  if (routeGrp) {
-    const rp = routeGrp.findOne('.routepath');
-    if (!rp.visible()) { rp.stroke('rgba(255,255,255,0.55)'); rp.visible(true); dirty = true; }
-  }
-  if (slotGrp) {
-    const rect = slotGrp.findOne('Rect');
-    if (!rect.visible()) { rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true); dirty = true; }
-    const lbl = slotGrp.findOne('.slot-label');
-    if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); dirty = true; }
-  }
-  if (dirty) { edgeLayer.batchDraw(); uiLayer.batchDraw(); }
+function enterRouteHover(route) {
+  if (route._hoverViewActive) return;
+  route._hoverViewActive = true;
+  pushViewFocus('ViewGhost');
 }
-function hideRouteHover(route) {
-  const routeGrp = edgeLayer.findOne('#' + route.id);
-  const slotGrp  = uiLayer.findOne('#slot_' + route.id);
-  if (routeGrp) routeGrp.findOne('.routepath').stroke(route.color);
-  if (slotGrp) {
-    slotGrp.findOne('Rect')?.stroke(route.color);
-    slotGrp.findOne('.slot-label')?.visible(false);
-  }
-  applyDebugVisibility();
+function exitRouteHover(route) {
+  if (!route._hoverViewActive) return;
+  route._hoverViewActive = false;
+  popViewFocus();
 }
 
 // ===== ROUTE RENDER =====
@@ -1517,10 +1655,11 @@ function drawRoute(route) {
   const ep = routeEndpoints(route);
   if (!ep) return;
   const grp = new Konva.Group({ id: route.id, name: 'route' });
+  const VR = VISUAL_STYLES.route;
   const path = new Konva.Path({
     data: routePathData(route),
-    stroke: route.color, strokeWidth: 4, lineCap: 'butt', lineJoin: 'round',
-    dash: [8, 6], dashOffset: 0, name: 'routepath'
+    stroke: route.color, strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
+    dash: [VR.dashOn, VR.dashOff], dashOffset: 0, name: 'routepath'
   });
   const hitbox = new Konva.Path({
     data: routePathData(route),
@@ -1535,8 +1674,8 @@ function drawRoute(route) {
   });
   grp.add(path, hitbox, hoverHit);
   grp.on('mousedown', e => onRouteMouseDown(e, route));
-  grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); showRouteHover(route); });
-  grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => hideRouteHover(route), 0); });
+  grp.on('mouseenter', () => { clearTimeout(route._hoverTimer); enterRouteHover(route); });
+  grp.on('mouseleave', () => { route._hoverTimer = setTimeout(() => exitRouteHover(route), 0); });
   edgeLayer.add(grp);
   edgeLayer.batchDraw();
   drawSlotForRoute(route);
@@ -1550,16 +1689,18 @@ function drawSlotForRoute(route) {
     id: 'slot_' + route.id, name: 'slot',
     x: mid.x, y: mid.y,
   });
+  const VSR = VISUAL_STYLES.slotRect, VSL = VISUAL_STYLES.slotLabel, VSG = VISUAL_STYLES.slotGear, VSD = VISUAL_STYLES.slotDelete;
+  const slotHalf = VSR.size / 2;
   const slot = new Konva.Rect({
-    x: -22, y: -22, width: 44, height: 44, cornerRadius: 7,
-    stroke: route.color, strokeWidth: 2, dash: [14, 8],
-    fill: 'rgba(255,255,255,0.06)', visible: false, name: 'slot-rect',
-    shadowColor: route.color, shadowBlur: 0, shadowOpacity: 0.6,
+    x: -slotHalf, y: -slotHalf, width: VSR.size, height: VSR.size, cornerRadius: VSR.cornerRadius,
+    stroke: route.color, strokeWidth: VSR.strokeWidth, dash: [VSR.dashOn, VSR.dashOff],
+    fill: VSR.fill, visible: false, name: 'slot-rect',
+    shadowColor: route.color, shadowBlur: 0, shadowOpacity: VSR.shadowOpacity,
   });
   const slotLabel = new Konva.Text({
-    x: -40, y: 25, width: 80, text: '', align: 'center',
-    fontSize: 10, fontFamily: 'system-ui, sans-serif',
-    fill: 'rgba(255,255,255,0.5)', visible: false, listening: false, name: 'slot-label',
+    x: -VSL.width / 2, y: VSL.offsetY, width: VSL.width, text: '', align: 'center',
+    fontSize: VSL.fontSize, fontFamily: 'system-ui, sans-serif',
+    fill: VSL.color, visible: false, listening: false, name: 'slot-label',
   });
   const hitbox = new Konva.Circle({
     radius: 26, fillPatternImage: STRIPE_PATTERN, listening: false,
@@ -1571,24 +1712,24 @@ function drawSlotForRoute(route) {
   });
   // Gear icon — upper-right, outside slot boundary.
   const gearIcon = new Konva.Text({
-    text: '⚙', fontSize: 13, fontFamily: 'system-ui, sans-serif',
-    fill: '#fff', opacity: 0.3, visible: false,
-    x: 24, y: -40,
+    text: VSG.text, fontSize: VSG.fontSize, fontFamily: 'system-ui, sans-serif',
+    fill: VSG.color, opacity: VSG.restOpacity, visible: false,
+    x: VSG.offsetX, y: VSG.offsetY,
     listening: false, name: 'slot-gear',
   });
-  // Delete button — upper-left, outside slot boundary.
+  // Delete button — upper-left, outside slot boundary. Background transparent at rest.
   const deleteBg = new Konva.Rect({
-    x: -40, y: -42, width: 18, height: 18, cornerRadius: 4,
-    fill: 'rgba(255,255,255,0.15)', visible: false, name: 'slot-delbg',
+    x: -41, y: -40, width: 20, height: 20, cornerRadius: 5,
+    fill: 'transparent', visible: false, name: 'slot-delbg',
   });
   const deleteIcon = new Konva.Text({
-    text: '✕', fontSize: 11, fontFamily: 'system-ui, sans-serif',
-    fill: '#fff', opacity: 0.3, visible: false,
-    x: -37, y: -40,
+    text: VSD.text, fontSize: VSD.fontSize, fontFamily: 'system-ui, sans-serif',
+    fill: VSD.color, opacity: VSD.restOpacity, visible: false,
+    x: VSD.offsetX, y: VSD.offsetY,
     listening: false, name: 'slot-del',
   });
   const deleteHit = new Konva.Rect({
-    x: -44, y: -46, width: 26, height: 26,
+    x: -44, y: -44, width: 26, height: 26,
     fill: 'transparent', name: 'slot-delhit', visible: false,
   });
   deleteHit.on('mousedown', e => {
@@ -1596,8 +1737,6 @@ function drawSlotForRoute(route) {
     e.cancelBubble = true;
     deleteRoute(route);
   });
-  deleteHit.on('mouseenter', () => { deleteIcon.to({ opacity: 0.9, duration: 0.12 }); deleteBg.fill('rgba(255,80,80,0.35)'); deleteBg.getLayer()?.batchDraw(); });
-  deleteHit.on('mouseleave', () => { deleteIcon.to({ opacity: 0.3, duration: 0.12 }); deleteBg.fill('rgba(255,255,255,0.15)'); deleteBg.getLayer()?.batchDraw(); });
   grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit);
   grp.routeRef = route;
   grp.on('mousedown', e => {
@@ -1607,25 +1746,14 @@ function drawSlotForRoute(route) {
   });
   grp.on('mouseenter', () => {
     clearTimeout(route._hoverTimer);
-    showRouteHover(route);
-    gearIcon.to({ opacity: 0.9, duration: 0.12 });
-    slot.to({ shadowBlur: 12, duration: 0.12 });
+    enterRouteHover(route);
     containerEl.style.cursor = 'pointer';
   });
   grp.on('mouseleave', () => {
-    route._hoverTimer = setTimeout(() => hideRouteHover(route), 0);
-    gearIcon.to({ opacity: 0.3, duration: 0.12 });
-    slot.to({ shadowBlur: 0, duration: 0.12 });
+    route._hoverTimer = setTimeout(() => exitRouteHover(route), 0);
     containerEl.style.cursor = MODES[currentMode].cursor;
   });
   uiLayer.add(grp);
-  // Continuous "Look at me" pulse on the slot body — sine 0→0.5→0 over 2s.
-  // The pulse runs always; when the slot is hidden by view-mode visibility
-  // the change still happens but isn't visible.
-  grp.flashEntry = lookAtMeFlash({
-    duration: 2000,
-    onValue: v => slot.fill('rgba(255,255,255,' + v.toFixed(3) + ')'),
-  });
   uiLayer.batchDraw();
 }
 function redrawRoutesTouching(nodeId) {
@@ -1821,10 +1949,7 @@ function deleteRoute(route) {
   routes = routes.filter(j => j.id !== route.id);
   const g = edgeLayer.findOne('#' + route.id); if (g) g.destroy();
   const slot = uiLayer.findOne('#slot_' + route.id);
-  if (slot) {
-    if (slot.flashEntry) stopFlash(slot.flashEntry);
-    slot.destroy();
-  }
+  if (slot) slot.destroy();
   edgeLayer.batchDraw();
   uiLayer.batchDraw();
 }
@@ -2435,7 +2560,6 @@ function loadViewModes() {
     });
   } catch (e) { /* ignore corrupt data */ }
 }
-loadViewModes(); // hydrate before first render
 
 let debugOpen = false;
 // Debug panel View Modes tab operates on VIEW MODES directly (purely visual states).
@@ -2741,7 +2865,6 @@ function toggleDebugVis(typeKey) {
   const cur = v.visible[typeKey] || 'visible';
   const idx = VIS_STATES.indexOf(cur);
   v.visible[typeKey] = VIS_STATES[(idx + 1) % VIS_STATES.length];
-  saveViewModes();
   // Preview the change live if the panel's active view differs from the effective view.
   const effectiveView = viewFocusStack.length
     ? viewFocusStack[viewFocusStack.length - 1]
@@ -2966,7 +3089,6 @@ function loadLevelData(data) {
         });
       }
     });
-    saveViewModes();
   }
 
   // Re-render dependent UI
@@ -3077,6 +3199,474 @@ function toggleGpPanel() {
   document.getElementById('gp-panel').classList.toggle('open', gpOpen);
   document.getElementById('gp-toggle').style.left = gpOpen ? '280px' : '0';
 }
+
+// ===== VISUALS TAB =====
+let gpActiveTab = 'gameplay';
+const VS_TYPE_LABELS = {
+  worker: 'Worker',
+  workerGhost: 'Worker Ghost',
+  pileSquare: 'Pile (square)',
+  pileTriangle: 'Pile (triangle)',
+  pileStackPiece: 'Pile Stack Piece',
+  route: 'Route Path',
+  slotRect: 'Slot Body',
+  slotLabel: 'Slot Label',
+  slotGear: 'Slot Gear Icon',
+  slotDelete: 'Slot Delete Icon',
+  carryIndicator: 'Carry Indicator',
+  speechBubble: 'Speech Bubble',
+  tickIndicator: 'Tick Indicator',
+};
+const VS_OPEN_TYPES = new Set();
+
+function gpSwitchTab(tab) {
+  gpActiveTab = tab;
+  document.querySelectorAll('.gp-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.gpTab === tab));
+  const showGameplay = tab === 'gameplay';
+  document.getElementById('gp-content').hidden = !showGameplay;
+  document.getElementById('gp-visuals-pane').hidden = showGameplay;
+  if (!showGameplay) renderVisualsTab();
+}
+
+function vsIsColor(value) {
+  if (typeof value !== 'string') return false;
+  return /^#[0-9a-f]{3,8}$/i.test(value) || /^rgba?\(/i.test(value);
+}
+function vsParseRgba(s) {
+  const m = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] != null ? +m[4] : 1 };
+}
+function vsToHex(value) {
+  if (typeof value !== 'string') return '#000000';
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(value)) {
+    return '#' + value.slice(1).split('').map(c => c + c).join('').toLowerCase();
+  }
+  if (/^#[0-9a-f]{8}$/i.test(value)) return value.slice(0, 7).toLowerCase();
+  const rgba = vsParseRgba(value);
+  if (rgba) {
+    const h = n => n.toString(16).padStart(2, '0');
+    return '#' + h(rgba.r) + h(rgba.g) + h(rgba.b);
+  }
+  return '#000000';
+}
+function vsApplyHexPreservingAlpha(originalValue, hex) {
+  const rgba = typeof originalValue === 'string' ? vsParseRgba(originalValue) : null;
+  if (rgba && rgba.a < 1) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${rgba.a})`;
+  }
+  return hex;
+}
+
+function vsTypeIsDirty(typeKey) {
+  const live = VISUAL_STYLES[typeKey];
+  const def = VISUAL_STYLES_DEFAULT[typeKey];
+  return Object.keys(def).some(k => live[k] !== def[k]);
+}
+function vsChangedKeys(typeKey) {
+  const live = VISUAL_STYLES[typeKey];
+  const def = VISUAL_STYLES_DEFAULT[typeKey];
+  return Object.keys(def).filter(k => live[k] !== def[k]);
+}
+
+function renderVisualsTab() {
+  const list = document.getElementById('vs-list');
+  if (!list) return;
+  const filter = (document.getElementById('vs-search')?.value || '').trim().toLowerCase();
+  const types = Object.keys(VS_TYPE_LABELS).filter(k => {
+    if (!filter) return true;
+    const label = VS_TYPE_LABELS[k].toLowerCase();
+    return k.toLowerCase().includes(filter) || label.includes(filter);
+  });
+  list.innerHTML = types.map(typeKey => vsRenderTypeRow(typeKey)).join('');
+  list.querySelectorAll('.vs-type-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const key = hdr.dataset.type;
+      if (VS_OPEN_TYPES.has(key)) VS_OPEN_TYPES.delete(key); else VS_OPEN_TYPES.add(key);
+      renderVisualsTab();
+    });
+  });
+  list.querySelectorAll('[data-vs-action]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const action = btn.dataset.vsAction;
+      const typeKey = btn.dataset.type;
+      if (action === 'reset-type') vsResetType(typeKey);
+      else if (action === 'copy-type') vsCopyTypePrompt(typeKey);
+    });
+  });
+  list.querySelectorAll('.vs-prop-input').forEach(input => {
+    input.addEventListener('input', () => vsHandleInput(input));
+    input.addEventListener('change', () => vsHandleInput(input));
+  });
+  list.querySelectorAll('.vs-prop-color-swatch').forEach(input => {
+    input.addEventListener('input', () => vsHandleColorSwatch(input));
+  });
+  list.querySelectorAll('.vs-prop-reset').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      vsResetProp(btn.dataset.type, btn.dataset.prop);
+    });
+  });
+}
+
+function vsRenderTypeRow(typeKey) {
+  const open = VS_OPEN_TYPES.has(typeKey);
+  const dirty = vsTypeIsDirty(typeKey);
+  const changedCount = vsChangedKeys(typeKey).length;
+  const meta = dirty ? `${changedCount} changed` : '';
+  return `
+    <div class="vs-type-row">
+      <div class="vs-type-header ${dirty ? 'dirty' : ''}" data-type="${typeKey}">
+        <span class="vs-type-name">${VS_TYPE_LABELS[typeKey]}</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span class="vs-type-meta ${dirty ? 'dirty' : ''}">${meta}</span>
+          <span class="vs-type-arrow ${open ? 'open' : ''}">▶</span>
+        </span>
+      </div>
+      <div class="vs-type-body ${open ? 'open' : ''}">
+        ${open ? vsRenderProps(typeKey) : ''}
+      </div>
+    </div>`;
+}
+
+function vsRenderProps(typeKey) {
+  const live = VISUAL_STYLES[typeKey];
+  const def = VISUAL_STYLES_DEFAULT[typeKey];
+  const rows = Object.keys(def).map(k => {
+    const v = live[k];
+    const changed = v !== def[k];
+    let inputHtml;
+    if (vsIsColor(v)) {
+      const hex = vsToHex(v);
+      inputHtml = `
+        <input type="color" class="vs-prop-color-swatch" value="${hex}" data-type="${typeKey}" data-prop="${k}">
+        <input type="text" class="vs-prop-input color-text" value="${escapeAttr(v)}" data-type="${typeKey}" data-prop="${k}" data-kind="text">`;
+    } else if (typeof v === 'number') {
+      inputHtml = `<input type="number" step="any" class="vs-prop-input" value="${v}" data-type="${typeKey}" data-prop="${k}" data-kind="number">`;
+    } else {
+      inputHtml = `<input type="text" class="vs-prop-input" value="${escapeAttr(String(v))}" data-type="${typeKey}" data-prop="${k}" data-kind="text">`;
+    }
+    return `
+      <div class="vs-prop-row">
+        <label class="${changed ? 'changed' : ''}" title="${k} (default: ${escapeAttr(String(def[k]))})">${k}</label>
+        ${inputHtml}
+        <button class="vs-prop-reset" title="Reset to default" data-type="${typeKey}" data-prop="${k}">↺</button>
+      </div>`;
+  }).join('');
+  return rows + `
+    <div class="vs-type-actions">
+      <button data-vs-action="copy-type" data-type="${typeKey}">Copy Prompt</button>
+      <button data-vs-action="reset-type" data-type="${typeKey}">Reset Type</button>
+    </div>`;
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function vsHandleInput(input) {
+  const typeKey = input.dataset.type;
+  const prop = input.dataset.prop;
+  const kind = input.dataset.kind;
+  let v = input.value;
+  if (kind === 'number') {
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return;
+    v = n;
+  }
+  VISUAL_STYLES[typeKey][prop] = v;
+  applyVisualStyles(typeKey);
+  vsRefreshHeader(typeKey);
+}
+function vsHandleColorSwatch(swatch) {
+  const typeKey = swatch.dataset.type;
+  const prop = swatch.dataset.prop;
+  const original = VISUAL_STYLES[typeKey][prop];
+  const newVal = vsApplyHexPreservingAlpha(original, swatch.value);
+  VISUAL_STYLES[typeKey][prop] = newVal;
+  const text = swatch.parentElement.querySelector('.color-text');
+  if (text) text.value = newVal;
+  applyVisualStyles(typeKey);
+  vsRefreshHeader(typeKey);
+}
+function vsRefreshHeader(typeKey) {
+  const list = document.getElementById('vs-list');
+  if (!list) return;
+  const hdr = list.querySelector(`.vs-type-header[data-type="${typeKey}"]`);
+  if (!hdr) return;
+  const dirty = vsTypeIsDirty(typeKey);
+  hdr.classList.toggle('dirty', dirty);
+  const meta = hdr.querySelector('.vs-type-meta');
+  if (meta) {
+    const n = vsChangedKeys(typeKey).length;
+    meta.textContent = dirty ? `${n} changed` : '';
+    meta.classList.toggle('dirty', dirty);
+  }
+  // Update changed-label highlighting in body without rebuilding inputs (would steal focus).
+  const body = hdr.nextElementSibling;
+  if (body) {
+    const def = VISUAL_STYLES_DEFAULT[typeKey];
+    const live = VISUAL_STYLES[typeKey];
+    body.querySelectorAll('.vs-prop-row').forEach(row => {
+      const lbl = row.querySelector('label');
+      const propInput = row.querySelector('[data-prop]');
+      if (!lbl || !propInput) return;
+      const k = propInput.dataset.prop;
+      lbl.classList.toggle('changed', live[k] !== def[k]);
+    });
+  }
+}
+function vsResetProp(typeKey, prop) {
+  VISUAL_STYLES[typeKey][prop] = VISUAL_STYLES_DEFAULT[typeKey][prop];
+  applyVisualStyles(typeKey);
+  renderVisualsTab();
+}
+function vsResetType(typeKey) {
+  Object.assign(VISUAL_STYLES[typeKey], VISUAL_STYLES_DEFAULT[typeKey]);
+  applyVisualStyles(typeKey);
+  renderVisualsTab();
+}
+function vsResetAll() {
+  Object.keys(VISUAL_STYLES).forEach(k => {
+    Object.assign(VISUAL_STYLES[k], VISUAL_STYLES_DEFAULT[k]);
+    applyVisualStyles(k);
+  });
+  renderVisualsTab();
+}
+
+function vsBuildPrompt(typeKeys) {
+  const dirty = typeKeys.filter(k => vsTypeIsDirty(k));
+  if (dirty.length === 0) {
+    return 'No visual properties have been changed from defaults.';
+  }
+  const lines = [];
+  lines.push('Update visual properties in index.html (the VISUAL_STYLES_DEFAULT object near APP_VERSION).');
+  lines.push('');
+  lines.push('The following changes were dialed in via the Visuals tab and should become the new defaults:');
+  lines.push('');
+  dirty.forEach(typeKey => {
+    lines.push(`# ${VS_TYPE_LABELS[typeKey]} (VISUAL_STYLES.${typeKey})`);
+    vsChangedKeys(typeKey).forEach(k => {
+      const oldV = VISUAL_STYLES_DEFAULT[typeKey][k];
+      const newV = VISUAL_STYLES[typeKey][k];
+      lines.push(`  ${k}: ${JSON.stringify(oldV)} → ${JSON.stringify(newV)}`);
+    });
+    lines.push('');
+  });
+  lines.push('Apply these by editing the corresponding entries inside VISUAL_STYLES_DEFAULT. The draw functions already read from VISUAL_STYLES, so no other code changes are required.');
+  return lines.join('\n');
+}
+
+async function vsCopy(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); document.body.removeChild(ta); return true; }
+    catch { document.body.removeChild(ta); return false; }
+  }
+}
+async function vsCopyTypePrompt(typeKey) {
+  const text = vsBuildPrompt([typeKey]);
+  await vsCopy(text);
+  vsFlashToolbar('Copied prompt');
+}
+async function vsCopyAllPrompt() {
+  const text = vsBuildPrompt(Object.keys(VS_TYPE_LABELS));
+  await vsCopy(text);
+  vsFlashToolbar('Copied prompt');
+}
+function vsFlashToolbar(msg) {
+  const tb = document.getElementById('vs-toolbar');
+  if (!tb) return;
+  const prev = tb.dataset.savedMsg;
+  if (!prev) tb.dataset.savedMsg = '';
+  let flash = tb.querySelector('.vs-flash');
+  if (!flash) {
+    flash = document.createElement('div');
+    flash.className = 'vs-flash';
+    flash.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:-22px;background:#1e3a5f;color:#7ab4f5;padding:3px 10px;border-radius:4px;font-size:10px;pointer-events:none;';
+    tb.style.position = 'relative';
+    tb.appendChild(flash);
+  }
+  flash.textContent = msg;
+  flash.style.opacity = '1';
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => { flash.style.opacity = '0'; flash.style.transition = 'opacity 0.4s'; }, 1100);
+}
+
+// Apply current VISUAL_STYLES values to all live Konva shapes of the given type.
+function applyVisualStyles(typeKey) {
+  const V = VISUAL_STYLES[typeKey];
+  if (!V) return;
+  switch (typeKey) {
+    case 'worker': {
+      const S = V.size / 2;
+      stage.find('.worker').forEach(grp => {
+        const img = grp.findOne('.workercircle');
+        if (img) {
+          img.x(-S); img.y(-S); img.width(S*2); img.height(S*2);
+          img.cornerRadius(V.cornerRadius);
+          img.stroke(V.strokeColor); img.strokeWidth(V.strokeWidth);
+          // Reflow portrait crop with new zoom.
+          const native = img.image();
+          if (native) {
+            const iw = native.naturalWidth || 128, ih = native.naturalHeight || 128;
+            const cw = iw / V.portraitZoom, ch = ih / V.portraitZoom;
+            img.cropX((iw - cw) / 2); img.cropY((ih - ch) / 2);
+            img.cropWidth(cw); img.cropHeight(ch);
+          }
+        }
+        const hb = grp.findOne('.hitbox-worker');
+        if (hb) { hb.x(-S); hb.y(-S); hb.width(S*2); hb.height(S*2); }
+        const lbl = grp.findOne('.workerlabel');
+        if (lbl) {
+          lbl.fontSize(V.labelFontSize); lbl.fill(V.labelColor); lbl.y(S + V.labelOffsetY);
+          lbl.x(-lbl.width() / 2);
+        }
+      });
+      workerLayer.batchDraw();
+      break;
+    }
+    case 'workerGhost': {
+      stage.find('.worker-ghost').forEach(g => {
+        const body = g.findOne('.ghostbody') || g.findOne('Rect');
+        if (body) {
+          body.fill(V.fill); body.stroke(V.strokeColor); body.strokeWidth(V.strokeWidth);
+          body.cornerRadius(V.cornerRadius);
+        }
+      });
+      workerLayer.batchDraw();
+      break;
+    }
+    case 'pileSquare': {
+      PILE_DOT_PATTERN = buildPileDotPattern(V.dotPatternColor);
+      const half = V.size / 2;
+      stage.find('.node').forEach(grp => {
+        const shape = grp.findOne('.nodeshape');
+        if (!shape) return;
+        if (shape.className !== 'Rect') return;
+        shape.x(-half); shape.y(-half);
+        shape.width(V.size); shape.height(V.size);
+        shape.cornerRadius(V.cornerRadius);
+        shape.strokeWidth(V.strokeWidth);
+        const tex = grp.findOne('.nodetex');
+        if (tex) {
+          tex.x(-(half - 2)); tex.y(-(half - 2));
+          tex.width(V.size - 4); tex.height(V.size - 4);
+          tex.fillPatternImage(PILE_DOT_PATTERN);
+        }
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'pileTriangle': {
+      stage.find('.node').forEach(grp => {
+        const shape = grp.findOne('.nodeshape');
+        if (!shape || shape.className !== 'RegularPolygon') return;
+        shape.radius(V.radius); shape.strokeWidth(V.strokeWidth);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'pileStackPiece': {
+      stage.find('.stackpiece').forEach(p => {
+        p.radius(V.radius); p.stroke(V.strokeColor); p.strokeWidth(V.strokeWidth);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'route': {
+      stage.find('.routepath').forEach(p => {
+        p.strokeWidth(V.strokeWidth);
+        p.dash([V.dashOn, V.dashOff]);
+      });
+      edgeLayer.batchDraw();
+      break;
+    }
+    case 'slotRect': {
+      const half = V.size / 2;
+      stage.find('.slot-rect').forEach(r => {
+        r.x(-half); r.y(-half);
+        r.width(V.size); r.height(V.size);
+        r.cornerRadius(V.cornerRadius);
+        r.strokeWidth(V.strokeWidth);
+        r.dash([V.dashOn, V.dashOff]);
+        r.shadowOpacity(V.shadowOpacity);
+      });
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'slotLabel': {
+      stage.find('.slot-label').forEach(t => {
+        t.fontSize(V.fontSize); t.fill(V.color);
+        t.y(V.offsetY); t.width(V.width); t.x(-V.width / 2);
+      });
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'slotGear': {
+      stage.find('.slot-gear').forEach(t => {
+        t.text(V.text); t.fontSize(V.fontSize); t.fill(V.color);
+        t.opacity(V.restOpacity); t.x(V.offsetX); t.y(V.offsetY);
+      });
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'slotDelete': {
+      stage.find('.slot-del').forEach(t => {
+        t.text(V.text); t.fontSize(V.fontSize); t.fill(V.color);
+        t.opacity(V.restOpacity); t.x(V.offsetX); t.y(V.offsetY);
+      });
+      uiLayer.batchDraw();
+      break;
+    }
+    case 'carryIndicator': {
+      stage.find('.carry').forEach(grp => {
+        grp.y(V.offsetY);
+        SCRAP_TYPES.forEach((t, i) => {
+          const tri = grp.findOne('.carry-' + t.id);
+          if (!tri) return;
+          tri.x((i - (SCRAP_TYPES.length - 1) / 2) * V.spacing);
+          tri.radius(V.radius);
+          tri.stroke(V.strokeColor);
+          tri.strokeWidth(V.strokeWidth);
+        });
+      });
+      workerLayer.batchDraw();
+      break;
+    }
+    case 'speechBubble':
+      // Only affects new speech bubbles (they live ~1.5s) — no live shapes to retrofit.
+      break;
+    case 'tickIndicator': {
+      const el = document.getElementById('tick-indicator');
+      if (el) {
+        el.style.width = V.size + 'px';
+        el.style.height = V.size + 'px';
+        el.style.border = `${V.borderWidth}px solid ${V.borderColor}`;
+        el.style.borderRadius = V.cornerRadius + 'px';
+        el.style.marginTop = -(V.size / 2) + 'px';
+      }
+      break;
+    }
+  }
+}
+
+document.querySelectorAll('.gp-tab').forEach(btn => {
+  btn.addEventListener('click', () => gpSwitchTab(btn.dataset.gpTab));
+});
+document.getElementById('vs-search').addEventListener('input', renderVisualsTab);
+document.getElementById('vs-copy-all').addEventListener('click', vsCopyAllPrompt);
+document.getElementById('vs-reset-all').addEventListener('click', vsResetAll);
 
 function toggleDebugPanel() {
   debugOpen = !debugOpen;
