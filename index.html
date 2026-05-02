@@ -111,6 +111,7 @@
   .vs-prop-color-swatch { width: 18px; height: 18px; border-radius: 3px; border: 1px solid #444; cursor: pointer; flex-shrink: 0; padding: 0; background: transparent; }
   .vs-prop-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
   .vs-prop-color-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
+  .vs-prop-opacity { width: 50px; flex-shrink: 0; cursor: pointer; margin-left: 4px; }
   .vs-prop-reset { background: none; border: none; color: #555; cursor: pointer; font-size: 12px; padding: 0 4px; }
   .vs-prop-reset:hover { color: #fff; }
   .vs-type-actions { display: flex; gap: 6px; padding-top: 8px; }
@@ -274,13 +275,15 @@
   <div id="top-palette">
     <div id="tabs">
       <button class="tab" data-tab="actions">Actions</button>
-      <button class="tab active" data-tab="objects">Level Palette</button>
+      <button class="tab active" data-tab="objects">Objects</button>
+      <button class="tab" data-tab="decorations">Decorations</button>
     </div>
     <div id="palette-actions" class="palette-pane" hidden>
       <button class="tool-btn active" data-tool="select" title="Game Interact: lift workers, move piles">Game<br>Interact</button>
       <button class="tool-btn" data-tool="delete" title="Click anything to delete">Delete</button>
     </div>
     <div id="palette-items" class="palette-pane"></div>
+    <div id="palette-decorations" class="palette-pane" hidden></div>
   </div>
   <div id="canvas-container">
     <div id="canvas"></div>
@@ -408,8 +411,12 @@ const palette = {
   objects: [
     { id: 'oA', kind: 'object', color: '#2f6fd6' },
   ],
+  decorations: [
+    { id: 'dA', kind: 'decoration', color: '#ffffff', shape: 'building', label: 'Office' },
+    { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
+  ],
 };
-const APP_VERSION = '0.1.2#86';
+const APP_VERSION = '0.1.2#94';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -448,6 +455,7 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 4,
     dashOn: 8,
     dashOff: 6,
+    cornerRadius: 8,
   },
   miniAnchor: {
     radius: 3,
@@ -457,13 +465,45 @@ const VISUAL_STYLES_DEFAULT = {
     rejectFlashColor: '#e63946',
     rejectFlashDurationMs: 240,
   },
+  trafficLightMan: {
+    headRadius: 4,
+    headColor: '#635454',
+    headOffsetY: 4,
+    neckGap: 1,
+    torsoWidth: 9,
+    torsoHeight: 16,
+    torsoCornerRadius: 2,
+    armWidth: 3,
+    armHeight: 14,
+    armColor: '#595959',
+    armCornerRadius: 2,
+    armGap: 1,
+    armOffsetY: 1,
+    legWidth: 5,
+    legHeight: 12,
+    legColor: '#454545',
+    legCornerRadius: 1,
+    legSeparation: 3,
+    legGap: 2,
+  },
+  assignTriangle: {
+    width: 26,
+    height: 10,
+    color: 'rgba(255,255,255,0.7)',
+    strokeColor: 'rgba(0,0,0,1)',
+    strokeWidth: 1,
+    cornerRadius: 1,
+    offsetY: 6,
+    bounceDist: 8,
+    bounceDurationMs: 150,
+  },
   slotRect: {
     size: 40,
     cornerRadius: 7,
     strokeWidth: 2,
     dashOn: 8,
     dashOff: 4,
-    fill: 'rgba(255,255,255,0.06)',
+    fill: 'rgba(255,255,255,0.5)',
     shadowOpacity: 0.6,
   },
   slotLabel: {
@@ -520,7 +560,7 @@ const VISUAL_STYLES_DEFAULT = {
     cornerRadius: 12,
     shadowColor: 'rgba(0,0,0,0.18)',
     shadowBlur: 10,
-    ghostOpacity: 0.55,
+    ghostOpacity: 0.35,
   },
   routeFilter: {
     triRadius: 14,
@@ -532,7 +572,7 @@ const VISUAL_STYLES_DEFAULT = {
   },
   scrapStack: {
     radius: 5,
-    maxHeight: 54,
+    maxHeight: 36,
     normalizeThreshold: 5,
     naturalSpacing: 10,
     columnSpacing: 14,
@@ -540,6 +580,51 @@ const VISUAL_STYLES_DEFAULT = {
     fill: 'rgba(255,255,255,0.25)',
     stroke: 'rgba(255,255,255,0.4)',
     strokeWidth: 1,
+  },
+  building: {
+    width: 176,
+    height: 66,
+    cornerRadius: 12,
+    topColor: '#ffffff',
+    bottomColor: '#e63946',
+    strokeColor: 'rgba(255,255,255,0.3)',
+    strokeWidth: 1.5,
+  },
+  buildingDoor: {
+    width: 20,
+    height: 44,
+    color: '#463825',
+    offsetX: -42,
+    offsetY: 2,
+  },
+  buildingSupport: {
+    width: 12,
+    height: 13,
+    color: '#514f4d',
+    offsetY: 31,
+  },
+  buildingChimney: {
+    width: 8,
+    height: 20,
+    color: '#000000',
+    offsetX: -51,
+    offsetY: -43,
+  },
+  buildingSign: {
+    width: 70,
+    height: 20,
+    color: '#333333',
+    textColor: '#4a90e2',
+    fontSize: 14,
+    offsetY: -37,
+  },
+  tree: {
+    canopyRadius: 30,
+    canopyColor: '#2d5016',
+    canopyHeight: 50,
+    trunkWidth: 8,
+    trunkHeight: 20,
+    trunkColor: '#654321',
   },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
@@ -921,10 +1006,102 @@ function makePaletteItem(tpl) {
   }
   return el;
 }
+function makeTrafficLightSvg(color) {
+  const VTL = VISUAL_STYLES.trafficLightMan;
+  const W = 48, H = 48;
+  const cx = W / 2;
+  const headCY = VTL.headOffsetY + VTL.headRadius;
+  const torsoTop = headCY + VTL.headRadius + VTL.neckGap;
+  const torsoLeft = cx - VTL.torsoWidth / 2;
+  const armY = torsoTop + VTL.armOffsetY;
+  const leftArmX  = torsoLeft - VTL.armWidth - VTL.armGap;
+  const rightArmX = torsoLeft + VTL.torsoWidth + VTL.armGap;
+  const legsTop = torsoTop + VTL.torsoHeight + VTL.legGap;
+  const leftLegX  = cx - VTL.legSeparation / 2 - VTL.legWidth;
+  const rightLegX = cx + VTL.legSeparation / 2;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <circle cx="${cx}" cy="${headCY}" r="${VTL.headRadius}" fill="${VTL.headColor}"/>
+    <rect x="${leftArmX}"  y="${armY}" width="${VTL.armWidth}" height="${VTL.armHeight}" rx="${VTL.armCornerRadius}" fill="${VTL.armColor}"/>
+    <rect x="${rightArmX}" y="${armY}" width="${VTL.armWidth}" height="${VTL.armHeight}" rx="${VTL.armCornerRadius}" fill="${VTL.armColor}"/>
+    <rect x="${torsoLeft}" y="${torsoTop}" width="${VTL.torsoWidth}" height="${VTL.torsoHeight}" rx="${VTL.torsoCornerRadius}" fill="${color}"/>
+    <rect x="${leftLegX}"  y="${legsTop}" width="${VTL.legWidth}" height="${VTL.legHeight}" rx="${VTL.legCornerRadius}" fill="${VTL.legColor}"/>
+    <rect x="${rightLegX}" y="${legsTop}" width="${VTL.legWidth}" height="${VTL.legHeight}" rx="${VTL.legCornerRadius}" fill="${VTL.legColor}"/>
+  </svg>`;
+}
+
+function makeTrafficLightPaletteItem(tpl) {
+  const el = document.createElement('div');
+  el.className = 'palette-item';
+  el.innerHTML = makeTrafficLightSvg(tpl.color);
+  const lbl = document.createElement('div');
+  lbl.style.cssText = 'position:absolute;bottom:2px;left:0;right:0;font-size:8px;color:#aaa;text-align:center;pointer-events:none;line-height:1';
+  lbl.textContent = (tpl.label || tpl.name || 'tl');
+  el.appendChild(lbl);
+  el.addEventListener('mousedown', e => startPaletteDrag(e, tpl, el));
+  el.addEventListener('click', () => { if (!suppressNextClick) openTemplateProps(tpl); });
+  return el;
+}
+
+function makeTrafficLightKonva(color) {
+  const V = VISUAL_STYLES.trafficLightMan;
+  const headCY = V.headOffsetY + V.headRadius;
+  const torsoTop = headCY + V.headRadius + V.neckGap;
+  const armY = torsoTop + V.armOffsetY;
+  const legsTop = torsoTop + V.torsoHeight + V.legGap;
+  const totalH = legsTop + V.legHeight;
+  const cy = totalH / 2;
+  const grp = new Konva.Group({ name: 'workerfigure' });
+  grp.add(new Konva.Circle({ x: 0, y: headCY - cy, radius: V.headRadius, fill: V.headColor }));
+  grp.add(new Konva.Rect({ x: -V.torsoWidth/2 - V.armGap - V.armWidth, y: armY - cy, width: V.armWidth, height: V.armHeight, cornerRadius: V.armCornerRadius, fill: V.armColor }));
+  grp.add(new Konva.Rect({ x: V.torsoWidth/2 + V.armGap, y: armY - cy, width: V.armWidth, height: V.armHeight, cornerRadius: V.armCornerRadius, fill: V.armColor }));
+  grp.add(new Konva.Rect({ x: -V.torsoWidth/2, y: torsoTop - cy, width: V.torsoWidth, height: V.torsoHeight, cornerRadius: V.torsoCornerRadius, fill: color, name: 'torso' }));
+  grp.add(new Konva.Rect({ x: -V.legSeparation/2 - V.legWidth, y: legsTop - cy, width: V.legWidth, height: V.legHeight, cornerRadius: V.legCornerRadius, fill: V.legColor }));
+  grp.add(new Konva.Rect({ x: V.legSeparation/2, y: legsTop - cy, width: V.legWidth, height: V.legHeight, cornerRadius: V.legCornerRadius, fill: V.legColor }));
+  return grp;
+}
+
+function roundedTrianglePath(ctx, pts, r) {
+  const n = pts.length;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = pts[(i + n - 1) % n];
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % n];
+    const d1x = x0 - x1, d1y = y0 - y1, l1 = Math.hypot(d1x, d1y);
+    const d2x = x2 - x1, d2y = y2 - y1, l2 = Math.hypot(d2x, d2y);
+    const rr = Math.min(r, l1 / 2, l2 / 2);
+    const tx1 = x1 + (d1x / l1) * rr, ty1 = y1 + (d1y / l1) * rr;
+    const tx2 = x1 + (d2x / l2) * rr, ty2 = y1 + (d2y / l2) * rr;
+    if (i === 0) ctx.moveTo(tx1, ty1); else ctx.lineTo(tx1, ty1);
+    ctx.arcTo(x1, y1, tx2, ty2, rr);
+  }
+  ctx.closePath();
+}
+
+function bounceAssignTriangle(tri) {
+  const VA = VISUAL_STYLES.assignTriangle;
+  const restY = tri._restY;
+  const dur = VA.bounceDurationMs / 1000 / 2;
+  const t1 = new Konva.Tween({
+    node: tri, y: restY - VA.bounceDist, duration: dur, easing: Konva.Easings.EaseOut,
+    onFinish() {
+      new Konva.Tween({ node: tri, y: restY, duration: dur, easing: Konva.Easings.EaseIn }).play();
+      t1.destroy();
+    }
+  });
+  t1.play();
+}
+
 function renderPalette() {
   const cont = document.getElementById('palette-items');
   cont.innerHTML = '';
   [...(palette.objects || []), ...(palette.workers || [])].forEach(tpl => cont.appendChild(makePaletteItem(tpl)));
+  (palette.workers || []).forEach(tpl => cont.appendChild(makeTrafficLightPaletteItem(tpl)));
+}
+function renderDecorationsTab() {
+  const cont = document.getElementById('palette-decorations');
+  cont.innerHTML = '';
+  (palette.decorations || []).forEach(tpl => cont.appendChild(makePaletteItem(tpl)));
 }
 document.querySelectorAll('#tabs .tab').forEach(b => {
   b.addEventListener('click', () => {
@@ -934,7 +1111,9 @@ document.querySelectorAll('#tabs .tab').forEach(b => {
     // Show the matching pane; hide the others.
     document.getElementById('palette-actions').hidden = (activeTab !== 'actions');
     document.getElementById('palette-items').hidden = (activeTab !== 'objects');
+    document.getElementById('palette-decorations').hidden = (activeTab !== 'decorations');
     if (activeTab === 'objects') renderPalette();
+    if (activeTab === 'decorations') renderDecorationsTab();
   });
 });
 
@@ -955,16 +1134,28 @@ function startPaletteDrag(e, tpl, sourceEl) {
   ghostEl = document.createElement('div');
   ghostEl.id = 'ghost';
   const isWorker = tpl.kind === 'worker';
-  const size = isWorker ? 26 : 44;
-  const radius = isWorker ? '5px' : '0';
-  // Match the in-level look: solid fill, no white border, dot pattern overlay for piles.
-  const dotsBg = isWorker
-    ? ''
-    : ';background-image:radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);background-size:6px 6px';
-  const clipPath = '';
+  let size = isWorker ? 26 : 44;
+  let width = size, height = size;
+  let radius = isWorker ? '5px' : '0';
+  let bgColor = tpl.color;
+  let style = '';
+
+  if (tpl.shape === 'building') {
+    width = 88;
+    height = 33;
+    radius = '6px';
+    bgColor = '#ffffff';
+    style = ';border-top: 16px solid ' + bgColor + '; border-bottom: 17px solid #e63946';
+  } else {
+    const dotsBg = isWorker
+      ? ''
+      : ';background-image:radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px);background-size:6px 6px';
+    style = dotsBg;
+  }
+
   ghostEl.style.cssText =
-    'width:' + size + 'px;height:' + size + 'px;background-color:' + tpl.color +
-    ';border-radius:' + radius + dotsBg + clipPath;
+    'width:' + width + 'px;height:' + height + 'px;background-color:' + bgColor +
+    ';border-radius:' + radius + style;
   document.body.appendChild(ghostEl);
   movePaletteGhost(e.clientX, e.clientY);
   // Lifting a pile temporarily switches to Draw Routes view so the player sees existing routes.
@@ -974,9 +1165,10 @@ function startPaletteDrag(e, tpl, sourceEl) {
 }
 function movePaletteGhost(x, y) {
   if (!ghostEl) return;
-  const half = (ghostEl.offsetWidth || 44) / 2;
-  ghostEl.style.left = (x - half) + 'px';
-  ghostEl.style.top = (y - half) + 'px';
+  const halfW = (ghostEl.offsetWidth || 44) / 2;
+  const halfH = (ghostEl.offsetHeight || 44) / 2;
+  ghostEl.style.left = (x - halfW) + 'px';
+  ghostEl.style.top = (y - halfH) + 'px';
 }
 function onPaletteDragMove(e) { dragMoved = true; movePaletteGhost(e.clientX, e.clientY); }
 function onPaletteDragEnd(e) {
@@ -999,13 +1191,15 @@ function onPaletteDragEnd(e) {
     setTimeout(() => suppressNextClick = false, 50);
   }
   dragTpl = null;
-  renderPalette();
+  if (activeTab === 'objects') renderPalette();
+  if (activeTab === 'decorations') renderDecorationsTab();
 }
 
 // ===== PLACE / DRAW NODES =====
 function placeNode(tpl, x, y) {
+  const isDecoration = tpl.kind === 'decoration';
   const node = {
-    id: uid(), templateId: tpl.id, x: snap(x), y: snap(y), color: tpl.color, items: 0,
+    id: uid(), templateId: tpl.id, kind: tpl.kind, x: isDecoration ? x : snap(x), y: isDecoration ? y : snap(y), color: tpl.color, items: 0,
     shape: tpl.shape || 'rect', label: tpl.label || '',
     scrap: [],
     states: { hovered: false },
@@ -1132,18 +1326,19 @@ function setPileState(node, key, value) {
 }
 function applyWorkerState(w) {
   const grp = workerLayer.findOne('#' + w.id); if (!grp) return;
-  const c = grp.findOne('.workercircle');
-  if (w.states && w.states.selected) {
-    c.stroke('#ffffff'); c.strokeWidth(3);
-    c.shadowColor('#ffffff'); c.shadowBlur(14); c.shadowOpacity(0.85);
-  } else {
-    c.stroke('rgba(255,255,255,0.35)'); c.strokeWidth(1.5);
-    c.shadowOpacity(0); c.shadowBlur(0);
-  }
+  grp.findOne('.selection-ring')?.visible(!!(w.states?.selected));
 }
 function refreshAllWorkers() {
   workers.forEach(applyWorkerState);
   workerLayer.batchDraw();
+}
+function redrawAllWorkers() {
+  workers.forEach(w => {
+    workerLayer.findOne('#' + w.id)?.destroy();
+    workerLayer.findOne('#ghost_' + w.id)?.destroy();
+    drawWorker(w);
+  });
+  refreshAllWorkers();
 }
 function setWorkerState(w, key, value) {
   if (!w.states) w.states = {};
@@ -1161,7 +1356,45 @@ function buildPileDotPattern(color) {
   return c;
 }
 let PILE_DOT_PATTERN = buildPileDotPattern(VISUAL_STYLES.pileSquare.dotPatternColor);
+function drawDecoration(node) {
+  const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'decoration', draggable: true });
+
+  if (node.shape === 'building') {
+    const VB = VISUAL_STYLES.building;
+    const w = VB.width / 2, h = VB.height / 2;
+    const topHalf = new Konva.Rect({ x: -w, y: -h, width: VB.width, height: h, cornerRadius: [VB.cornerRadius, VB.cornerRadius, 0, 0], fill: VB.topColor, stroke: VB.strokeColor, strokeWidth: VB.strokeWidth, name: 'building-top' });
+    const botHalf = new Konva.Rect({ x: -w, y: 0, width: VB.width, height: h, cornerRadius: [0, 0, VB.cornerRadius, VB.cornerRadius], fill: VB.bottomColor, stroke: VB.strokeColor, strokeWidth: VB.strokeWidth, name: 'building-bottom' });
+    const VD = VISUAL_STYLES.buildingDoor;
+    const door = new Konva.Rect({ x: VD.offsetX - VD.width/2, y: VD.offsetY - VD.height/2, width: VD.width, height: VD.height, fill: VD.color, stroke: 'rgba(0,0,0,0.3)', strokeWidth: 0.5, name: 'building-door' });
+    const VS = VISUAL_STYLES.buildingSupport;
+    const sup1 = new Konva.Rect({ x: -w/2 - VS.width/2, y: h - VS.height/2, width: VS.width, height: VS.height, fill: VS.color, name: 'building-support' });
+    const sup2 = new Konva.Rect({ x: w/2 - VS.width/2, y: h - VS.height/2, width: VS.width, height: VS.height, fill: VS.color, name: 'building-support' });
+    const VC = VISUAL_STYLES.buildingChimney;
+    const chimney = new Konva.Rect({ x: VC.offsetX - VC.width/2, y: VC.offsetY - VC.height/2, width: VC.width, height: VC.height, fill: VC.color, name: 'building-chimney' });
+    const VSg = VISUAL_STYLES.buildingSign;
+    const signBg = new Konva.Rect({ x: -VSg.width/2, y: VSg.offsetY - VSg.height/2, width: VSg.width, height: VSg.height, cornerRadius: 3, fill: VSg.color, stroke: 'rgba(0,0,0,0.3)', strokeWidth: 0.5, name: 'building-sign-bg' });
+    const signText = new Konva.Text({ x: -VSg.width/2, y: VSg.offsetY - VSg.height/2 + 3, width: VSg.width, height: VSg.height, text: 'Office', fontSize: VSg.fontSize, fontFamily: 'system-ui, sans-serif', fill: VSg.textColor, align: 'center', verticalAlign: 'middle', name: 'building-sign-text' });
+    grp.add(topHalf, botHalf, door, sup1, sup2, chimney, signBg, signText);
+  } else if (node.shape === 'tree') {
+    const VT = VISUAL_STYLES.tree;
+    const trunk = new Konva.Rect({ x: -VT.trunkWidth/2, y: VT.canopyHeight - VT.trunkHeight, width: VT.trunkWidth, height: VT.trunkHeight, fill: VT.trunkColor, name: 'tree-trunk' });
+    const canopy = new Konva.RegularPolygon({ x: 0, y: VT.canopyRadius * 0.3, sides: 3, radius: VT.canopyRadius, fill: VT.canopyColor, name: 'tree-canopy' });
+    grp.add(trunk, canopy);
+  }
+
+  grp.on('dragend', () => {
+    node.x = grp.x();
+    node.y = grp.y();
+  });
+
+  nodeLayer.add(grp);
+  nodeLayer.batchDraw();
+}
 function drawNode(node) {
+  if (node.kind === 'decoration' || node.shape === 'building' || node.shape === 'tree') {
+    drawDecoration(node);
+    return;
+  }
   const grp = new Konva.Group({ x: node.x, y: node.y, id: node.id, name: 'node' });
   const VS = VISUAL_STYLES.pileSquare;
   const half = VS.size / 2;
@@ -1234,19 +1467,38 @@ function drawWorker(w) {
   const displayName = name ? name[0].toUpperCase() + name.slice(1) : '';
 
   const VW = VISUAL_STYLES.worker, VG = VISUAL_STYLES.workerGhost, VC = VISUAL_STYLES.carryIndicator;
-  const S = VW.size / 2;
-  const img = WORKER_PORTRAITS[name];
-  const iw = img?.naturalWidth || 128, ih = img?.naturalHeight || 128;
-  const zoom = VW.portraitZoom, cw = iw / zoom, ch = ih / zoom;
+  const VA = VISUAL_STYLES.assignTriangle;
+  const VT = VISUAL_STYLES.trafficLightMan;
+
+  // Figure geometry (group centered at 0,0)
+  const _headCY   = VT.headOffsetY + VT.headRadius;
+  const _torsoTop = _headCY + VT.headRadius + VT.neckGap;
+  const _legsTop  = _torsoTop + VT.torsoHeight + VT.legGap;
+  const _totalH   = _legsTop + VT.legHeight;
+  const figHalfW  = VT.torsoWidth / 2 + VT.armGap + VT.armWidth;
+  const figHalfH  = _totalH / 2;
+  const headTopY  = VT.headOffsetY - figHalfH;
+  const triRestY  = headTopY - VA.offsetY - VA.height;
+
   const grp = new Konva.Group({ x: w.x, y: w.y, id: w.id, name: 'worker' });
-  const c = new Konva.Image({
-    image: img, x: -S, y: -S, width: S*2, height: S*2, cornerRadius: VW.cornerRadius,
-    cropX: (iw - cw) / 2, cropY: (ih - ch) / 2, cropWidth: cw, cropHeight: ch,
-    stroke: VW.strokeColor, strokeWidth: VW.strokeWidth, name: 'workercircle',
+
+  // Traffic-light figure — listening: false, mouse passes through to hitboxes
+  const figure = makeTrafficLightKonva(tpl?.color || '#888');
+  figure.listening(false);
+  grp.add(figure);
+
+  // Selection ring — white outline when selected
+  const ringPad = 4;
+  const selRing = new Konva.Rect({
+    x: -(figHalfW + ringPad), y: -(figHalfH + ringPad),
+    width: (figHalfW + ringPad) * 2, height: _totalH + ringPad * 2,
+    cornerRadius: 5, stroke: 'rgba(255,255,255,0.85)', strokeWidth: 2,
+    fillEnabled: false, listening: false, name: 'selection-ring', visible: false,
   });
-  const hitbox = new Konva.Rect({ x: -S, y: -S, width: S*2, height: S*2, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-worker', visible: false });
-  // carry indicator: one fixed triangle slot per scrap type, shown above head
-  const carry = new Konva.Group({ y: VC.offsetY, name: 'carry' });
+  grp.add(selRing);
+
+  // Carry indicators
+  const carry = new Konva.Group({ y: VC.offsetY, name: 'carry', listening: false });
   SCRAP_TYPES.forEach((t, i) => {
     const offsetX = (i - (SCRAP_TYPES.length - 1) / 2) * VC.spacing;
     carry.add(new Konva.RegularPolygon({
@@ -1255,22 +1507,153 @@ function drawWorker(w) {
       listening: false, visible: false, name: 'carry-' + t.id,
     }));
   });
+  grp.add(carry);
+
   if (displayName) {
-    const label = new Konva.Text({ text: displayName, fontSize: VW.labelFontSize, fontFamily: 'system-ui, sans-serif', fill: VW.labelColor, y: S + VW.labelOffsetY, listening: false, name: 'workerlabel' });
+    const label = new Konva.Text({
+      text: displayName, fontSize: VW.labelFontSize, fontFamily: 'system-ui, sans-serif',
+      fill: VW.labelColor, y: figHalfH + VW.labelOffsetY, listening: false, name: 'workerlabel',
+    });
     label.x(-label.width() / 2);
     grp.add(label);
   }
-  grp.add(c, hitbox, carry);
-  carry.moveToTop();
-  grp.on('mousedown', e => onWorkerMouseDown(e, w, grp));
-  grp.on('mouseenter', () => { containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer"; w.states.hovered = true; workerSay(w, 'hm?'); enterWorkerHover(); });
-  grp.on('mouseleave', () => { containerEl.style.cursor = MODES[currentMode].cursor; w.states.hovered = false; exitWorkerHover(); });
+
+  // Visible assign triangle — purely visual, no hit detection
+  const tri = new Konva.Shape({
+    x: 0, y: triRestY, name: 'assign-triangle', visible: false, listening: false,
+    fill: VA.color, stroke: VA.strokeColor, strokeWidth: VA.strokeWidth,
+    sceneFunc(ctx, shape) {
+      const V2 = VISUAL_STYLES.assignTriangle;
+      roundedTrianglePath(ctx, [[-V2.width/2, 0], [V2.width/2, 0], [0, V2.height]], V2.cornerRadius);
+      ctx.fillStrokeShape(shape);
+    },
+  });
+  tri._restY = triRestY;
+  grp.add(tri);
+
+  // Body hitbox — covers full figure, handles hover + click-to-select
+  const ringPad2 = ringPad;
+  const bodyHitbox = new Konva.Rect({
+    x: -(figHalfW + ringPad2), y: -(figHalfH + ringPad2),
+    width: (figHalfW + ringPad2) * 2, height: _totalH + ringPad2 * 2,
+    fill: 'rgba(0,0,0,0.001)', listening: true, name: 'hitbox-worker',
+  });
+  grp.add(bodyHitbox);
+
+  // Triangle hitbox — larger invisible rect above head, exclusively handles drag-to-assign
+  const triHitPad = 8;
+  const triHitbox = new Konva.Rect({
+    x: -(VA.width / 2 + triHitPad), y: triRestY - triHitPad,
+    width: VA.width + triHitPad * 2, height: VA.height + triHitPad * 2,
+    fill: 'rgba(0,0,0,0.001)', listening: true, name: 'hitbox-tri',
+  });
+  grp.add(triHitbox);
+
+  // Group hover — fires on entering either hitbox from outside the group
+  grp.on('mouseenter', () => {
+    containerEl.style.cursor = "url('icons/icon_pick.png') 16 16, pointer";
+    w.states.hovered = true;
+    if (!w.states._triDragging) { workerSay(w, 'hm?'); enterWorkerHover(); tri.visible(true); bounceAssignTriangle(tri); }
+    workerLayer.batchDraw();
+  });
+  grp.on('mouseleave', () => {
+    containerEl.style.cursor = MODES[currentMode].cursor;
+    w.states.hovered = false;
+    if (!w.states._triDragging) { exitWorkerHover(); tri.visible(false); workerLayer.batchDraw(); }
+  });
+
+  // Body: click to select (middle-click to inspect panel; respect other modes)
+  bodyHitbox.on('mousedown', e => {
+    if (e.evt.button === 1) { e.evt.preventDefault(); showWorkerInGpPanel(w); return; }
+    e.cancelBubble = true;
+    if (currentMode === 'inspectMode') { openInspectPanel('worker', w, e.evt.clientX, e.evt.clientY); return; }
+    if (currentMode === 'deleteMode') { showConfirm(e.evt.clientX, e.evt.clientY, 'Delete worker?', () => deleteWorker(w)); return; }
+    if (currentMode !== 'gameInteract') setMode('gameInteract');
+    selectWorker(w.id);
+  });
+
+  // Triangle hitbox: drag to assign worker to a route slot
+  triHitbox.on('mousedown', e => {
+    if (currentMode !== 'gameInteract') return;
+    if (e.evt.button !== 0) return;
+    e.cancelBubble = true;
+    w.states._triDragging = true;
+    if (w.routeId) {
+      const oldRoute = routes.find(j => j.id === w.routeId);
+      if (oldRoute) oldRoute.workerId = null;
+      w.routeId = null;
+    }
+    w.targetX = null; w.targetY = null;
+    w.states.lifting = true;
+    pushTransientMode('liftWorker');
+
+    let _snapSlot = null, _prevSnapSlot = null;
+    const highlightSlot = (slot) => {
+      if (slot === _prevSnapSlot) return;
+      if (_prevSnapSlot) {
+        const r = _prevSnapSlot.findOne('Rect');
+        if (r) { r.stroke('#fff'); r.strokeWidth(VISUAL_STYLES.slotRect.strokeWidth); }
+      }
+      _prevSnapSlot = slot;
+      if (slot) {
+        const r = slot.findOne('Rect');
+        if (r) { r.stroke(tpl?.color || '#4a90e2'); r.strokeWidth(3); }
+      }
+      uiLayer.batchDraw();
+    };
+
+    const onTriMove = () => {
+      const worldP = getWorldPointer(); if (!worldP) return;
+      tri.x(worldP.x - grp.x());
+      tri.y(worldP.y - grp.y() - VA.height);
+      const visibleSlots = uiLayer.find('.slot').filter(s => s.findOne('Rect')?.visible());
+      let best = null, bestD2 = 50 * 50;
+      for (const s of visibleSlots) {
+        const dx = s.x() - worldP.x, dy = s.y() - worldP.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 < bestD2) { bestD2 = d2; best = s; }
+      }
+      _snapSlot = best;
+      highlightSlot(best);
+      workerLayer.batchDraw();
+    };
+
+    const onTriUp = () => {
+      stage.off('mousemove.tridrag'); stage.off('mouseup.tridrag');
+      highlightSlot(null);
+      w.states._triDragging = false;
+      tri.x(0); tri.y(tri._restY); tri.visible(false);
+      w.states.lifting = false;
+      popTransientMode();
+      if (_snapSlot) {
+        const chosen = _snapSlot.routeRef;
+        const wp2 = routeWaypoints(chosen);
+        const mid = pointAtFraction(wp2, 0.5);
+        chosen.workerId = w.id;
+        w.routeId = chosen.id;
+        w.inventory = {}; w.noScrap = false;
+        w.targetX = mid.x; w.targetY = mid.y;
+        showGhost(w, mid.x, mid.y);
+        workerSay(w, 'Back to work!');
+      } else {
+        hideGhost(w);
+      }
+      updateWorkerVisual(w);
+      selectWorker(w.id);
+      workerLayer.batchDraw();
+    };
+
+    stage.on('mousemove.tridrag', onTriMove);
+    stage.on('mouseup.tridrag', onTriUp);
+  });
+
   workerLayer.add(grp);
 
-  // Per-worker ghost — same body shape, white at 30% opacity. Persistent shape, hidden by default.
-  // Visible while lifting (follows cursor) and while the worker is walking toward its commanded target.
+  // Per-worker ghost — sized to match the figure bounds. Visible while lifting and while walking.
+  const _ghostHalfW = figHalfW + ringPad;
+  const _ghostHalfH = figHalfH + ringPad;
   const ghostBody = new Konva.Rect({
-    x: -S, y: -S, width: S*2, height: S*2, cornerRadius: VG.cornerRadius,
+    x: -_ghostHalfW, y: -_ghostHalfH, width: _ghostHalfW * 2, height: _ghostHalfH * 2, cornerRadius: VG.cornerRadius,
     fill: VG.fill, stroke: VG.strokeColor, strokeWidth: VG.strokeWidth,
     listening: false, name: 'ghostbody',
   });
@@ -1524,8 +1907,26 @@ function buildRouteSegments(route) {
 function routePathData(route) {
   const segs = buildRouteSegments(route);
   if (!segs || segs.length < 2) return '';
+  const r = VISUAL_STYLES.route.cornerRadius || 0;
+  if (r <= 0 || segs.length < 3) {
+    let d = `M ${segs[0].x} ${segs[0].y}`;
+    for (let i = 1; i < segs.length; i++) d += ` L ${segs[i].x} ${segs[i].y}`;
+    return d;
+  }
   let d = `M ${segs[0].x} ${segs[0].y}`;
-  for (let i = 1; i < segs.length; i++) d += ` L ${segs[i].x} ${segs[i].y}`;
+  for (let i = 1; i < segs.length - 1; i++) {
+    const prev = segs[i - 1], cur = segs[i], next = segs[i + 1];
+    const lenIn  = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+    const lenOut = Math.hypot(next.x - cur.x, next.y - cur.y);
+    const ri = Math.min(r, lenIn / 2, lenOut / 2);
+    const enterX = cur.x - (cur.x - prev.x) / (lenIn || 1) * ri;
+    const enterY = cur.y - (cur.y - prev.y) / (lenIn || 1) * ri;
+    const exitX  = cur.x + (next.x - cur.x) / (lenOut || 1) * ri;
+    const exitY  = cur.y + (next.y - cur.y) / (lenOut || 1) * ri;
+    d += ` L ${enterX} ${enterY} Q ${cur.x} ${cur.y} ${exitX} ${exitY}`;
+  }
+  const last = segs[segs.length - 1];
+  d += ` L ${last.x} ${last.y}`;
   return d;
 }
 
@@ -1711,7 +2112,7 @@ function startLineDraft(fromNode) {
         for (let i = count - 1; i >= 0; i--) {
           scrapPreview.add(new Konva.RegularPolygon({
             x: cx, y: VS.baseOffsetY - i * spacing, sides: 3, radius: VS.radius,
-            fill: i === 0 ? tpl.color : VS.fill,
+            fill: VS.fill,
             stroke: VS.stroke, strokeWidth: VS.strokeWidth,
             listening: false,
           }));
@@ -2078,13 +2479,14 @@ function drawSlotForRoute(route) {
   });
   gearHit.on('mouseenter', () => { clearTimeout(route._ghostTimer); showFilterGhost(route); });
   gearHit.on('mouseleave', () => { route._ghostTimer = setTimeout(() => hideFilterGhost(route), 80); });
-  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
-  grp.routeRef = route;
-  grp.on('mousedown', e => {
+  gearHit.on('mousedown', e => {
     if (currentMode !== 'gameInteract') return;
+    if (e.evt.button !== 0) return;
     e.cancelBubble = true;
     openRouteFilter(route);
   });
+  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
+  grp.routeRef = route;
   grp.on('mouseenter', () => {
     clearTimeout(route._hoverTimer);
     enterRouteHover(route);
@@ -2136,10 +2538,6 @@ function onRouteMouseDown(e, route) {
     e.cancelBubble = true;
     showConfirm(e.evt.clientX, e.evt.clientY, 'Delete Route?', () => deleteRoute(route));
     return;
-  }
-  if (currentMode === 'gameInteract') {
-    e.cancelBubble = true;
-    openRouteFilter(route);
   }
 }
 
@@ -2984,7 +3382,8 @@ const HITBOX_LAYERS = () => [nodeLayer, workerLayer, edgeLayer, uiLayer];
 function discoverHitboxes() {
   const groups = new Map(); // suffix -> { key, label, shapes }
   HITBOX_LAYERS().forEach(layer => {
-    layer.find('Shape').forEach(s => {
+    layer.find('Shape, Rect').forEach(s => {
+      if (s.listening()) return; // functional hitboxes handle events — exclude from debug toggle
       const n = s.name && s.name();
       if (!n) return;
       // a shape can have multiple class-names (space-separated); find any starting with 'hitbox-'
@@ -3044,7 +3443,7 @@ function buildRevealGhosts(includeRoutes = true) {
           const cy = nodeGrp.y() + VS.baseOffsetY - i * spacing;
           revealLayer.add(new Konva.RegularPolygon({
             x: cx, y: cy, sides: 3, radius: VS.radius,
-            fill: i === 0 ? tpl.color : VS.fill,
+            fill: VS.fill,
             stroke: VS.stroke, strokeWidth: VS.strokeWidth,
             listening: false,
           }));
@@ -3083,6 +3482,7 @@ function applyDebugVisibility() {
   const view = debugPreviewing ? debugActiveView : effectiveView;
   const showAnchors = (view === 'ViewGhost' || view === 'ViewHoverReveal');
   edgeLayer.find('.mini-anchor').forEach(a => a.visible(showAnchors));
+  if (view !== 'ViewGhost') uiLayer.find('.slot-label').forEach(l => l.visible(false));
   if (view === 'ViewHoverReveal') {
     VISUAL_TYPES.forEach(t => t.apply(false));
     buildRevealGhosts();
@@ -3542,7 +3942,7 @@ document.getElementById('btn-load-level').addEventListener('click', uploadLevel)
 
 // ===== META-CONTROLS =====
 const DEFAULT_SAVE_KEY = 'uxproto_default_level';
-const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-01T23:46:23.473Z","stage":{"x":-298.12141000000054,"y":-229.03895000000017,"scale":1.6105100000000008},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i27","templateId":"oA","x":680,"y":400,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i28","templateId":"oA","x":880,"y":360,"color":"#2f6fd6","items":35,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"}]},{"id":"i29","templateId":"oA","x":960,"y":560,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i32","templateId":"oA","x":1120,"y":320,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]}],"routes":[],"workers":[{"id":"i24","templateId":"wA","color":"#e74c3c","capacity":1,"x":160,"y":160,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i25","templateId":"wB","color":"#3498db","capacity":2,"x":160,"y":240,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i26","templateId":"wC","color":"#f1c40f","capacity":3,"x":160,"y":320,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i30","templateId":"wA","color":"#e74c3c","capacity":1,"x":541.518779765416,"y":331.59617139912194,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i31","templateId":"wB","color":"#3498db","capacity":2,"x":478.80572613644136,"y":381.2698772438543,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible","workers":"visible","piles":"visible","pileItems":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"hidden","routeSlots":"hidden","grid":"hidden","workers":"visible","piles":"visible","pileItems":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible","workers":"visible","piles":"visible","pileItems":"visible"}}},"nextId":33,"routeColorIdx":0};
+const BUNDLED_LEVEL = {"version":1,"savedAt":"2026-05-02T19:05:38.059Z","stage":{"x":0,"y":0,"scale":1},"palette":{"objects":[{"id":"oA","kind":"object","color":"#2f6fd6"}],"workers":[{"id":"wA","kind":"worker","color":"#e74c3c","capacity":1,"name":"greg"},{"id":"wB","kind":"worker","color":"#3498db","capacity":2,"name":"romeo"},{"id":"wC","kind":"worker","color":"#f1c40f","capacity":3,"name":"fred"}]},"nodes":[{"id":"i3","templateId":"oA","x":960,"y":360,"color":"#2f6fd6","items":0,"shape":"rect","label":"","scrap":[]},{"id":"i4","templateId":"oA","x":800,"y":480,"color":"#2f6fd6","items":18,"shape":"rect","label":"","scrap":[{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"wood"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"steel"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"},{"type":"plastic"}]},{"id":"i5","templateId":"dA","x":747,"y":207,"color":"#ffffff","items":0,"shape":"building","label":"Office","scrap":[]},{"id":"i6","templateId":"dB","x":890,"y":184,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i7","templateId":"dB","x":633,"y":122,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i8","templateId":"dB","x":1282,"y":201,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i9","templateId":"dB","x":939,"y":149,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i10","templateId":"dB","x":1316,"y":286,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i11","templateId":"dB","x":1194,"y":619,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i12","templateId":"dB","x":422,"y":259,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]},{"id":"i13","templateId":"dB","x":474,"y":676,"color":"#2d5016","items":0,"shape":"tree","label":"Tree","scrap":[]}],"routes":[],"workers":[{"id":"i1","templateId":"wA","color":"#e74c3c","capacity":1,"x":666,"y":469,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null},{"id":"i2","templateId":"wB","color":"#3498db","capacity":2,"x":809,"y":883,"routeId":null,"inventory":{},"segIdx":0,"segT":0,"dir":1,"targetX":null,"targetY":null}],"viewModes":{"ViewDefault":{"visible":{"workerLabels":"hidden","routes":"hidden","routeSlots":"hidden","grid":"visible"}},"ViewGhost":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"hidden"}},"ViewHoverReveal":{"visible":{"workerLabels":"visible","routes":"visible","routeSlots":"visible","grid":"visible"}}},"nextId":14,"routeColorIdx":0};
 let metaOpen = true;
 
 function toggleMetaControls() {
@@ -3631,9 +4031,17 @@ const VS_TYPE_LABELS = {
   speechBubble: 'Speech Bubble',
   tickIndicator: 'Tick Indicator',
   miniAnchor: 'Mini Anchor',
+  trafficLightMan: 'Traffic-Light Man',
+  assignTriangle: 'Assign Triangle',
   guiPanel: 'GUI Panel',
   routeFilter: 'Route Filter',
   scrapStack: 'Scrap Stack',
+  building: 'Building',
+  buildingDoor: 'Building Door',
+  buildingSupport: 'Building Support',
+  buildingChimney: 'Building Chimney',
+  buildingSign: 'Building Sign',
+  tree: 'Tree',
 };
 const VS_OPEN_TYPES = new Set();
 
@@ -3678,6 +4086,18 @@ function vsApplyHexPreservingAlpha(originalValue, hex) {
     return `rgba(${r},${g},${b},${rgba.a})`;
   }
   return hex;
+}
+function vsGetAlpha(value) {
+  if (typeof value !== 'string') return 1;
+  const rgba = vsParseRgba(value);
+  return rgba ? rgba.a : 1;
+}
+function vsApplyAlpha(originalValue, alpha) {
+  const hex = vsToHex(originalValue);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return alpha >= 1 ? hex : `rgba(${r},${g},${b},${alpha})`;
 }
 
 function vsTypeIsDirty(typeKey) {
@@ -3724,6 +4144,9 @@ function renderVisualsTab() {
   list.querySelectorAll('.vs-prop-color-swatch').forEach(input => {
     input.addEventListener('input', () => vsHandleColorSwatch(input));
   });
+  list.querySelectorAll('.vs-prop-opacity').forEach(slider => {
+    slider.addEventListener('input', () => vsHandleOpacity(slider));
+  });
   list.querySelectorAll('.vs-prop-reset').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -3761,8 +4184,10 @@ function vsRenderProps(typeKey) {
     let inputHtml;
     if (vsIsColor(v)) {
       const hex = vsToHex(v);
+      const alpha = vsGetAlpha(v);
       inputHtml = `
         <input type="color" class="vs-prop-color-swatch" value="${hex}" data-type="${typeKey}" data-prop="${k}">
+        <input type="range" class="vs-prop-opacity" min="0" max="100" value="${Math.round(alpha * 100)}" data-type="${typeKey}" data-prop="${k}" title="Opacity">
         <input type="text" class="vs-prop-input color-text" value="${escapeAttr(v)}" data-type="${typeKey}" data-prop="${k}" data-kind="text">`;
     } else if (typeof v === 'number') {
       inputHtml = `<input type="number" step="any" class="vs-prop-input" value="${v}" data-type="${typeKey}" data-prop="${k}" data-kind="number">`;
@@ -3808,6 +4233,18 @@ function vsHandleColorSwatch(swatch) {
   const newVal = vsApplyHexPreservingAlpha(original, swatch.value);
   VISUAL_STYLES[typeKey][prop] = newVal;
   const text = swatch.parentElement.querySelector('.color-text');
+  if (text) text.value = newVal;
+  applyVisualStyles(typeKey);
+  vsRefreshHeader(typeKey);
+}
+function vsHandleOpacity(slider) {
+  const typeKey = slider.dataset.type;
+  const prop = slider.dataset.prop;
+  const alpha = parseFloat(slider.value) / 100;
+  const original = VISUAL_STYLES[typeKey][prop];
+  const newVal = vsApplyAlpha(original, alpha);
+  VISUAL_STYLES[typeKey][prop] = newVal;
+  const text = slider.parentElement.querySelector('.color-text');
   if (text) text.value = newVal;
   applyVisualStyles(typeKey);
   vsRefreshHeader(typeKey);
@@ -4024,9 +4461,13 @@ function applyVisualStyles(typeKey) {
       break;
     }
     case 'route': {
-      stage.find('.routepath').forEach(p => {
-        p.strokeWidth(V.strokeWidth);
-        p.dash([V.dashOn, V.dashOff]);
+      routes.forEach(j => {
+        const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
+        const pd = routePathData(j);
+        const rp = grp.findOne('.routepath');
+        if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); }
+        grp.findOne('.hitbox-route')?.data(pd);
+        grp.findOne('.hover-hit-route')?.data(pd);
       });
       edgeLayer.batchDraw();
       break;
@@ -4040,6 +4481,7 @@ function applyVisualStyles(typeKey) {
         r.strokeWidth(V.strokeWidth);
         r.dash([V.dashOn, V.dashOff]);
         r.shadowOpacity(V.shadowOpacity);
+        r.fill(V.fill);
       });
       uiLayer.batchDraw();
       break;
@@ -4086,6 +4528,24 @@ function applyVisualStyles(typeKey) {
     case 'speechBubble':
       // Only affects new speech bubbles (they live ~1.5s) — no live shapes to retrofit.
       break;
+    case 'trafficLightMan':
+      renderPalette();
+      redrawAllWorkers();
+      break;
+    case 'assignTriangle': {
+      // sceneFunc reads VISUAL_STYLES live (width/height/cornerRadius update on next draw).
+      // fill/stroke are Konva properties — update them directly, then redraw if position changed.
+      const posChanged = ['offsetY', 'height'].some(k => VISUAL_STYLES_DEFAULT.assignTriangle[k] !== V[k]);
+      if (posChanged) {
+        redrawAllWorkers();
+      } else {
+        workerLayer.find('.assign-triangle').forEach(t => {
+          t.fill(V.color); t.stroke(V.strokeColor); t.strokeWidth(V.strokeWidth);
+        });
+        workerLayer.batchDraw();
+      }
+      break;
+    }
     case 'miniAnchor': {
       stage.find('.mini-anchor').forEach(a => {
         a.radius(V.radius);
@@ -4121,6 +4581,72 @@ function applyVisualStyles(typeKey) {
       }
       break;
     }
+    case 'building': {
+      const w = V.width / 2, h = V.height / 2;
+      stage.find('[data-shape=building]').forEach(grp => {
+        const top = grp.findOne('.building-top');
+        const bot = grp.findOne('.building-bottom');
+        if (top) { top.x(-w); top.y(-h); top.width(V.width); top.height(h); top.cornerRadius([V.cornerRadius, V.cornerRadius, 0, 0]); top.fill(V.topColor); top.stroke(V.strokeColor); top.strokeWidth(V.strokeWidth); }
+        if (bot) { bot.x(-w); bot.y(0); bot.width(V.width); bot.height(h); bot.cornerRadius([0, 0, V.cornerRadius, V.cornerRadius]); bot.fill(V.bottomColor); bot.stroke(V.strokeColor); bot.strokeWidth(V.strokeWidth); }
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'buildingDoor': {
+      stage.find('.building-door').forEach(d => {
+        d.x(V.offsetX - V.width/2); d.y(V.offsetY - V.height/2);
+        d.width(V.width); d.height(V.height);
+        d.fill(V.color);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'buildingSupport': {
+      stage.find('.building-support').forEach(s => {
+        s.width(V.width); s.height(V.height);
+        s.fill(V.color);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'buildingChimney': {
+      stage.find('.building-chimney').forEach(c => {
+        c.x(V.offsetX - V.width/2); c.y(V.offsetY - V.height/2);
+        c.width(V.width); c.height(V.height);
+        c.fill(V.color);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'buildingSign': {
+      stage.find('.building-sign-bg').forEach(bg => {
+        bg.x(-V.width/2); bg.y(V.offsetY - V.height/2);
+        bg.width(V.width); bg.height(V.height);
+        bg.fill(V.color);
+      });
+      stage.find('.building-sign-text').forEach(txt => {
+        txt.x(-V.width/2); txt.y(V.offsetY - V.height/2 + 3);
+        txt.width(V.width); txt.height(V.height);
+        txt.fontSize(V.fontSize);
+        txt.fill(V.textColor);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'tree': {
+      stage.find('.tree-trunk').forEach(t => {
+        t.x(-V.trunkWidth/2); t.y(V.canopyHeight - V.trunkHeight);
+        t.width(V.trunkWidth); t.height(V.trunkHeight);
+        t.fill(V.trunkColor);
+      });
+      stage.find('.tree-canopy').forEach(c => {
+        c.y(V.canopyRadius * 0.3);
+        c.radius(V.canopyRadius);
+        c.fill(V.canopyColor);
+      });
+      nodeLayer.batchDraw();
+      break;
+    }
   }
 }
 
@@ -4153,7 +4679,6 @@ setInterval(() => {
 }, 100);
 
 // ===== INIT =====
-spawnInitialWorkers();
 renderPalette();
 applyMode();
 
