@@ -371,6 +371,7 @@
     <button class="gp-tab active" data-gp-tab="gameplay">Gameplay</button>
     <button class="gp-tab" data-gp-tab="visuals">Visuals</button>
     <button class="gp-tab" data-gp-tab="decorations">Decorations</button>
+    <button class="gp-tab" data-gp-tab="hitboxes">Hitboxes</button>
   </div>
   <div id="gp-content">
   </div>
@@ -391,6 +392,12 @@
       <button id="dec-reset-all" title="Reset every property to its default">Reset All</button>
     </div>
     <div id="dec-list"></div>
+  </div>
+  <div id="gp-hitboxes-pane" hidden>
+    <div id="hb-toolbar">
+      <button id="hb-save-code" title="Write current hitbox values into VISUAL_STYLES_DEFAULT in index.html (dev server only)">Save to Code</button>
+    </div>
+    <div id="hb-list"></div>
   </div>
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
@@ -432,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#121';
+const APP_VERSION = '0.1.2#123';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -664,6 +671,11 @@ const VISUAL_STYLES_DEFAULT = {
     trunkHeight: 15,
     trunkColor: '#654321',
   },
+  hitboxPile: { radius: 24 },
+  hitboxAnchor: { radius: 11 },
+  hitboxRouteHover: { strokeWidth: 28 },
+  hitboxWorker: { pad: 4 },
+  hitboxTri: { pad: 8 },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -760,6 +772,7 @@ function popTransientMode() {
 // hovering a pile in the palette, dragging a pile out of the palette) can request
 // the Route View visual mode. View-only — does NOT change the game mode.
 let pileFocusDepth = 0;
+let _hoveredNodeId = null;
 function enterPileFocus() {
   pileFocusDepth++;
   if (pileFocusDepth === 1) pushViewFocus('ViewGhost');
@@ -1431,15 +1444,15 @@ function drawNode(node) {
   const VS = VISUAL_STYLES.pileSquare;
   const half = VS.size / 2;
   const shape = new Konva.Rect({ x: -half, y: -half, width: VS.size, height: VS.size, cornerRadius: VS.cornerRadius, fill: node.color, stroke: node.color, strokeWidth: VS.strokeWidth, name: 'nodeshape' });
-  const hitbox = new Konva.Circle({ radius: 24, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
-  const anchorHit = new Konva.Circle({ radius: 11, fill: 'transparent', name: 'anchor-hit' });
+  const hitbox = new Konva.Circle({ radius: VISUAL_STYLES.hitboxPile.radius, fillPatternImage: STRIPE_PATTERN, listening: false, name: 'hitbox-pile', visible: false });
+  const anchorHit = new Konva.Circle({ radius: VISUAL_STYLES.hitboxAnchor.radius, fill: 'transparent', name: 'anchor-hit' });
   const stack = new Konva.Group({ name: 'stack' });
   const tex = new Konva.Rect({ x: -(half - 2), y: -(half - 2), width: VS.size - 4, height: VS.size - 4, fillPatternImage: PILE_DOT_PATTERN, listening: false, name: 'nodetex' });
   grp.add(shape, tex, hitbox, anchorHit, stack);
   let grpFocusPushed = false;
   grp.on('mousedown', e => onNodeMouseDown(e, node, grp));
-  grp.on('mouseenter', () => { if (!lineDraft) { grpFocusPushed = true; enterPileFocus(); } });
-  grp.on('mouseleave', () => { if (grpFocusPushed) { grpFocusPushed = false; leavePileFocus(); } });
+  grp.on('mouseenter', () => { if (!lineDraft) { grpFocusPushed = true; _hoveredNodeId = node.id; enterPileFocus(); } });
+  grp.on('mouseleave', () => { if (grpFocusPushed) { grpFocusPushed = false; _hoveredNodeId = null; leavePileFocus(); } });
   anchorHit.on('mouseenter', () => enterPileFocus());
   anchorHit.on('mouseleave', () => leavePileFocus());
   nodeLayer.add(grp);
@@ -1519,7 +1532,7 @@ function drawWorker(w) {
   figure.listening(false);
   grp.add(figure);
 
-  const ringPad = 4;
+  const ringPad = VISUAL_STYLES.hitboxWorker.pad;
 
   // Carry indicators
   const carry = new Konva.Group({ y: VC.offsetY, name: 'carry', listening: false });
@@ -1592,7 +1605,7 @@ function drawWorker(w) {
   grp.add(bodyHitbox);
 
   // Triangle hitbox — larger invisible rect above head, exclusively handles drag-to-assign
-  const triHitPad = 8;
+  const triHitPad = VISUAL_STYLES.hitboxTri.pad;
   const triHitbox = new Konva.Rect({
     x: -(VA.width / 2 + triHitPad), y: triRestY - triHitPad,
     width: VA.width + triHitPad * 2, height: VA.height + triHitPad * 2,
@@ -2541,7 +2554,7 @@ function drawRoute(route) {
   // Wide, nearly-invisible path so route is hoverable even when routepath is hidden.
   const hoverHit = new Konva.Path({
     data: routePathData(route),
-    stroke: routeColor(), strokeWidth: 28, lineCap: 'round',
+    stroke: routeColor(), strokeWidth: VISUAL_STYLES.hitboxRouteHover.strokeWidth, lineCap: 'round',
     opacity: 0.001, name: 'hover-hit-route',
   });
   const fromAnchor = makeMiniAnchor(route, true);
@@ -3628,7 +3641,9 @@ let debugPreviewing = false; // true while the panel is overriding the live view
 function buildRevealGhosts(includeRoutes = true) {
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
-    revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
+    if (!_hoveredNodeId || grp.id() === _hoveredNodeId) {
+      revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
+    }
   });
   if (includeRoutes) {
     edgeLayer.find('.routepath').forEach(el => {
@@ -4250,9 +4265,15 @@ const VS_TYPE_LABELS = {
   buildingChimney: 'Building Chimney',
   buildingSign: 'Building Sign',
   tree: 'Tree',
+  hitboxPile: 'Pile Hitbox',
+  hitboxAnchor: 'Mini-Anchor Hitbox',
+  hitboxRouteHover: 'Route Hover Hitbox',
+  hitboxWorker: 'Worker Body Hitbox',
+  hitboxTri: 'Drag Triangle Hitbox',
 };
 const VS_OPEN_TYPES = new Set();
 const DECORATION_TYPES = new Set(['building', 'buildingDoor', 'buildingSupport', 'buildingChimney', 'buildingSign', 'tree']);
+const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 'hitboxWorker', 'hitboxTri']);
 
 function gpSwitchTab(tab) {
   gpActiveTab = tab;
@@ -4261,8 +4282,10 @@ function gpSwitchTab(tab) {
   document.getElementById('gp-content').hidden = !showGameplay;
   document.getElementById('gp-visuals-pane').hidden = tab !== 'visuals';
   document.getElementById('gp-decorations-pane').hidden = tab !== 'decorations';
+  document.getElementById('gp-hitboxes-pane').hidden = tab !== 'hitboxes';
   if (tab === 'visuals') renderVisualsTab();
   else if (tab === 'decorations') renderDecorationsTab();
+  else if (tab === 'hitboxes') renderHitboxesTab();
 }
 
 function vsIsColor(value) {
@@ -4328,6 +4351,7 @@ function renderVisualsTab() {
   const filter = (document.getElementById('vs-search')?.value || '').trim().toLowerCase();
   const types = Object.keys(VS_TYPE_LABELS).filter(k => {
     if (DECORATION_TYPES.has(k)) return false;
+    if (HITBOX_TYPES.has(k)) return false;
     if (!filter) return true;
     const label = VS_TYPE_LABELS[k].toLowerCase();
     return k.toLowerCase().includes(filter) || label.includes(filter);
@@ -4410,6 +4434,75 @@ function renderDecorationsTab() {
       vsResetProp(btn.dataset.type, btn.dataset.prop);
     });
   });
+}
+
+function renderHitboxesTab() {
+  const list = document.getElementById('hb-list');
+  if (!list) return;
+  const types = Array.from(HITBOX_TYPES);
+  list.innerHTML = types.map(typeKey => vsRenderTypeRow(typeKey)).join('');
+  list.querySelectorAll('.vs-type-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const key = hdr.dataset.type;
+      if (VS_OPEN_TYPES.has(key)) VS_OPEN_TYPES.delete(key); else VS_OPEN_TYPES.add(key);
+      renderHitboxesTab();
+    });
+  });
+  list.querySelectorAll('[data-vs-action]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const action = btn.dataset.vsAction;
+      const typeKey = btn.dataset.type;
+      if (action === 'reset-type') { vsResetType(typeKey); renderHitboxesTab(); }
+    });
+  });
+  list.querySelectorAll('.vs-prop-input').forEach(input => {
+    input.addEventListener('input', () => vsHandleInput(input));
+    input.addEventListener('change', () => vsHandleInput(input));
+  });
+  list.querySelectorAll('.vs-prop-reset').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      vsResetProp(btn.dataset.type, btn.dataset.prop);
+    });
+  });
+}
+
+async function hbSaveToCode() {
+  const btn = document.getElementById('hb-save-code');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/save-visual-styles', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(VISUAL_STYLES),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    Object.keys(VISUAL_STYLES).forEach(k => Object.assign(VISUAL_STYLES_DEFAULT[k], VISUAL_STYLES[k]));
+    renderHitboxesTab();
+    hbFlashToolbar('Saved to index.html');
+  } catch (err) {
+    const msg = String(err.message || err);
+    hbFlashToolbar(/Failed to fetch|NetworkError/i.test(msg) ? 'Save needs dev server (run serve.bat)' : 'Save failed: ' + msg);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+function hbFlashToolbar(msg) {
+  const tb = document.getElementById('hb-toolbar');
+  if (!tb) return;
+  let flash = tb.querySelector('.vs-flash');
+  if (!flash) {
+    flash = document.createElement('div');
+    flash.className = 'vs-flash';
+    flash.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:-22px;background:#1e3a5f;color:#7ab4f5;padding:3px 10px;border-radius:4px;font-size:10px;pointer-events:none;';
+    tb.style.position = 'relative';
+    tb.appendChild(flash);
+  }
+  flash.textContent = msg;
+  flash.style.opacity = '1'; flash.style.transition = '';
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => { flash.style.opacity = '0'; flash.style.transition = 'opacity 0.4s'; }, 1100);
 }
 
 function vsRenderTypeRow(typeKey) {
@@ -4928,6 +5021,47 @@ function applyVisualStyles(typeKey) {
       nodeLayer.batchDraw();
       break;
     }
+    case 'hitboxPile': {
+      stage.find('.hitbox-pile').forEach(c => c.radius(V.radius));
+      nodeLayer.batchDraw();
+      break;
+    }
+    case 'hitboxAnchor': {
+      stage.find('.anchor-hit').forEach(c => c.radius(V.radius));
+      edgeLayer.batchDraw(); uiLayer.batchDraw();
+      break;
+    }
+    case 'hitboxRouteHover': {
+      stage.find('.hover-hit-route').forEach(p => p.strokeWidth(V.strokeWidth));
+      edgeLayer.batchDraw();
+      break;
+    }
+    case 'hitboxWorker': {
+      const VT = VISUAL_STYLES.trafficLightMan;
+      const totalH = VT.headRadius * 2 + VT.neckGap + VT.torsoHeight + VT.legGap + VT.legHeight;
+      const figHalfW = VT.torsoWidth / 2 + VT.armGap + VT.armWidth;
+      const pad = V.pad;
+      stage.find('.hitbox-worker').forEach(s => {
+        s.x(-(figHalfW + pad)); s.y(-(totalH / 2 + pad));
+        s.width((figHalfW + pad) * 2); s.height(totalH + pad * 2);
+      });
+      workerLayer.batchDraw();
+      break;
+    }
+    case 'hitboxTri': {
+      const VT = VISUAL_STYLES.trafficLightMan;
+      const VA = VISUAL_STYLES.assignTriangle;
+      const totalH = VT.headRadius * 2 + VT.neckGap + VT.torsoHeight + VT.legGap + VT.legHeight;
+      const headTopY = VT.headOffsetY - totalH / 2;
+      const triRestY = headTopY - VA.gap - VA.height;
+      const pad = V.pad;
+      stage.find('.hitbox-tri').forEach(s => {
+        s.x(-(VA.width / 2 + pad)); s.y(triRestY - pad);
+        s.width(VA.width + pad * 2); s.height(VA.height + pad * 2);
+      });
+      workerLayer.batchDraw();
+      break;
+    }
   }
 }
 
@@ -4942,6 +5076,7 @@ document.getElementById('dec-search').addEventListener('input', renderDecoration
 document.getElementById('dec-copy-all').addEventListener('click', () => vsCopyAllPrompt(Array.from(DECORATION_TYPES)));
 document.getElementById('dec-reset-all').addEventListener('click', () => vsResetDecorationsAll());
 document.getElementById('dec-save-code').addEventListener('click', vsSaveToCode);
+document.getElementById('hb-save-code').addEventListener('click', hbSaveToCode);
 // Tick indicator's initial visual comes from inline CSS — push current defaults so
 // changes to VISUAL_STYLES_DEFAULT.tickIndicator take effect without editing CSS.
 applyVisualStyles('tickIndicator');
