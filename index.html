@@ -439,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#127';
+const APP_VERSION = '0.1.2#128';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -1667,7 +1667,7 @@ function drawWorker(w) {
     w.states._triDragging = true;
     if (w.routeId) {
       const oldRoute = routes.find(j => j.id === w.routeId);
-      if (oldRoute) oldRoute.workerId = null;
+      if (oldRoute) { oldRoute.workerId = null; refreshSlotPortrait(oldRoute); }
       w.routeId = null;
     }
     w.targetX = null; w.targetY = null;
@@ -2597,6 +2597,32 @@ function drawRoute(route) {
   edgeLayer.batchDraw();
   drawSlotForRoute(route);
 }
+function refreshSlotPortrait(route) {
+  const slotGrp = uiLayer.findOne('#slot_' + route.id);
+  if (!slotGrp) return;
+  const portrait = slotGrp.findOne('.slot-portrait');
+  if (!portrait) return;
+  if (route.workerId) {
+    const w = workers.find(x => x.id === route.workerId);
+    const tpl = w && palette.workers.find(t => t.id === w.templateId);
+    const img = tpl && tpl.name && WORKER_PORTRAITS[tpl.name];
+    if (img && img.complete && img.naturalWidth > 0) {
+      const zoom = VISUAL_STYLES.worker.portraitZoom;
+      const cw = img.naturalWidth / zoom, ch = img.naturalHeight / zoom;
+      portrait.image(img);
+      portrait.cropX((img.naturalWidth - cw) / 2);
+      portrait.cropY((img.naturalHeight - ch) / 2);
+      portrait.cropWidth(cw);
+      portrait.cropHeight(ch);
+      portrait.visible(true);
+    } else {
+      portrait.visible(false);
+    }
+  } else {
+    portrait.visible(false);
+  }
+  uiLayer.batchDraw();
+}
 function drawSlotForRoute(route) {
   const ep = routeEndpoints(route);
   if (!ep) return;
@@ -2613,6 +2639,10 @@ function drawSlotForRoute(route) {
     stroke: routeColor(), strokeWidth: VSR.strokeWidth, dash: [VSR.dashOn, VSR.dashOff],
     fill: VSR.fill, visible: false, name: 'slot-rect',
     shadowColor: routeColor(), shadowBlur: 0, shadowOpacity: VSR.shadowOpacity,
+  });
+  const portrait = new Konva.Image({
+    x: -slotHalf, y: -slotHalf, width: VSR.size, height: VSR.size,
+    cornerRadius: VSR.cornerRadius, visible: false, listening: false, name: 'slot-portrait',
   });
   const slotLabel = new Konva.Text({
     x: -VSL.width / 2, y: VSL.offsetY, width: VSL.width, text: '', align: 'center',
@@ -2675,7 +2705,7 @@ function drawSlotForRoute(route) {
     e.cancelBubble = true;
     openRouteFilter(route);
   });
-  grp.add(slot, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
+  grp.add(slot, portrait, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
   grp.routeRef = route;
   grp.on('mouseenter', () => {
     clearTimeout(route._hoverTimer);
@@ -2795,6 +2825,7 @@ function onWorkerMouseDown(e, w, grp) {
       w.routeId = chosen.id;
       w.inventory = {}; w.noScrap = false;
       w.targetX = mid.x; w.targetY = mid.y;
+      refreshSlotPortrait(chosen);
       workerSay(w, 'Back to work!');
     } else if (p) {
       w.targetX = snap(p.x); w.targetY = snap(p.y);
@@ -2863,7 +2894,7 @@ function deleteRoute(route) {
 function deleteWorker(w) {
   if (w.routeId) {
     const j = routes.find(jj => jj.id === w.routeId);
-    if (j) j.workerId = null;
+    if (j) { j.workerId = null; refreshSlotPortrait(j); }
   }
   workers = workers.filter(x => x.id !== w.id);
   const g = workerLayer.findOne('#' + w.id); if (g) g.destroy();
