@@ -440,7 +440,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#139';
+const APP_VERSION = '0.1.2#140';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -547,12 +547,6 @@ const VISUAL_STYLES_DEFAULT = {
     hoverStrokeColor: '#ffffff',
     hoverStrokeWidth: 3,
     hoverFill: '#e3e3e3',
-  },
-  slotLabel: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.5)',
-    offsetY: 25,
-    width: 80,
   },
   slotGear: {
     text: '⚙',
@@ -696,7 +690,9 @@ const VISUAL_STYLES_DEFAULT = {
   hitboxSlotIcons: {
     pad: 4,
   },
-  hitboxMiniAnchor: { radius: 11 },
+  hitboxMiniAnchor: {
+    radius: 5,
+  },
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -1169,7 +1165,7 @@ function bounceAssignTriangle(tri) {
 function renderPalette() {
   const cont = document.getElementById('palette-items');
   cont.innerHTML = '';
-  [...(palette.objects || []), ...(palette.workers || [])].forEach(tpl => cont.appendChild(makePaletteItem(tpl)));
+  (palette.objects || []).forEach(tpl => cont.appendChild(makePaletteItem(tpl)));
   (palette.workers || []).forEach(tpl => cont.appendChild(makeTrafficLightPaletteItem(tpl)));
 }
 function renderDecorationsTab() {
@@ -2344,21 +2340,6 @@ stage.on('mouseup', () => {
   if (created) holdRouteView(created.id);
 });
 
-function slotStatusText(route) {
-  if (!route.workerId) return 'No Worker';
-  const w = workers.find(w => w.id === route.workerId);
-  if (!w) return 'No Worker';
-  const tpl = palette.workers.find(t => t.id === w.templateId);
-  const name = tpl ? tpl.name[0].toUpperCase() + tpl.name.slice(1) : 'Worker';
-  const hasInventory = Object.values(w.inventory || {}).some(v => v > 0);
-  let status;
-  if (w.states?.lifting)  status = 'Lifting';
-  else if (w.targetX != null) status = 'Walking to slot';
-  else if (w.noScrap)     status = 'No more scrap!';
-  else if (hasInventory)  status = 'Carrying';
-  else                    status = 'Walking';
-  return name + ' · ' + status;
-}
 
 // ===== ROUTE HOVER (shared by route path and slot) =====
 function setSlotIconsVisible(route, visible) {
@@ -2662,7 +2643,7 @@ function drawSlotForRoute(route) {
     id: 'slot_' + route.id, name: 'slot',
     x: mid.x, y: mid.y,
   });
-  const VSR = VISUAL_STYLES.slotRect, VSL = VISUAL_STYLES.slotLabel, VSG = VISUAL_STYLES.slotGear, VSD = VISUAL_STYLES.slotDelete;
+  const VSR = VISUAL_STYLES.slotRect, VSG = VISUAL_STYLES.slotGear, VSD = VISUAL_STYLES.slotDelete;
   const slotHalf = VSR.size / 2;
   const slot = new Konva.Rect({
     x: -slotHalf, y: -slotHalf, width: VSR.size, height: VSR.size, cornerRadius: VSR.cornerRadius,
@@ -2673,11 +2654,6 @@ function drawSlotForRoute(route) {
   const portrait = new Konva.Image({
     x: -slotHalf, y: -slotHalf, width: VSR.size, height: VSR.size,
     cornerRadius: VSR.cornerRadius, visible: false, listening: false, name: 'slot-portrait',
-  });
-  const slotLabel = new Konva.Text({
-    x: -VSL.width / 2, y: VSL.offsetY, width: VSL.width, text: '', align: 'center',
-    fontSize: VSL.fontSize, fontFamily: 'system-ui, sans-serif',
-    fill: VSL.color, visible: false, listening: false, name: 'slot-label',
   });
   const hitbox = new Konva.Circle({
     radius: VISUAL_STYLES.hitboxSlot.radius, fillPatternImage: STRIPE_PATTERN, listening: false,
@@ -2735,7 +2711,7 @@ function drawSlotForRoute(route) {
     e.cancelBubble = true;
     openRouteFilter(route);
   });
-  grp.add(slot, portrait, slotLabel, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
+  grp.add(slot, portrait, hitbox, hoverHit, gearIcon, deleteBg, deleteIcon, deleteHit, gearHit);
   grp.routeRef = route;
   grp.on('mouseenter', () => {
     clearTimeout(route._hoverTimer);
@@ -3471,10 +3447,6 @@ const anim = new Konva.Animation(frame => {
     dirty = true;
   } catch(e) { showDebugError(e); } });
   tickFlashes();
-  routes.forEach(route => {
-    const lbl = uiLayer.findOne('#slot_' + route.id)?.findOne('.slot-label');
-    if (lbl && lbl.visible()) lbl.text(slotStatusText(route));
-  });
   if (routes.length > 0) {
     routeDashOffset -= DASH_SPEED_PX_PER_SEC * dt;
     edgeLayer.find('.routepath').forEach(p => p.dashOffset(routeDashOffset));
@@ -3627,11 +3599,12 @@ const VISUAL_TYPES = [
       uiLayer.find('.slot').forEach(s => {
         const occupied = s.routeRef && s.routeRef.workerId;
         s.findOne('Rect')?.visible(vis && !occupied);
-        const gear = s.findOne('.slot-gear');
-        if (gear) { gear.visible(vis); if (!vis) gear.opacity(0.3); }
-        ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => s.findOne(n)?.visible(vis));
-        const del = s.findOne('.slot-del');
-        if (del && !vis) del.opacity(0.3);
+        // Icons are managed per-hover by setSlotIconsVisible — only force-hide them
+        // when the slot layer itself goes invisible, to clean up any lingering state.
+        if (!vis) {
+          s.findOne('.slot-gear')?.visible(false);
+          ['.slot-delbg', '.slot-del', '.slot-delhit', '.slot-gearhit'].forEach(n => s.findOne(n)?.visible(false));
+        }
       });
       uiLayer.batchDraw();
     }
@@ -3728,7 +3701,7 @@ function buildRevealGhosts(includeRoutes = true) {
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
     const isHovered = grp.id() === _hoveredNodeId;
-    const showDot = _anchorHovered || (!_hoveredNodeId || isHovered);
+    const showDot = _anchorHovered ? true : (_hoveredNodeId && isHovered);
     if (showDot) {
       revealLayer.add(new Konva.Circle({ x: grp.x(), y: grp.y(), radius: 7, fill: 'rgba(255,255,255,0.5)', stroke: 'rgba(255,255,255,0.8)', strokeWidth: 1.5, listening: false }));
     }
@@ -3809,7 +3782,6 @@ function applyDebugVisibility() {
   const view = debugPreviewing ? debugActiveView : effectiveView;
   const showAnchors = (view === 'ViewGhost' || view === 'ViewHoverReveal');
   edgeLayer.find('.mini-anchor').forEach(a => a.visible(showAnchors));
-  if (view !== 'ViewGhost') uiLayer.find('.slot-label').forEach(l => l.visible(false));
   if (view === 'ViewHoverReveal') {
     VISUAL_TYPES.forEach(t => t.apply(false));
     buildRevealGhosts();
@@ -3826,8 +3798,6 @@ function applyDebugVisibility() {
       if (slotGrp) {
         const rect = slotGrp.findOne('Rect');
         rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true);
-        const lbl = slotGrp.findOne('.slot-label');
-        if (lbl) { lbl.text(slotStatusText(route)); lbl.visible(true); }
       }
     });
     edgeLayer.batchDraw();
@@ -4349,7 +4319,6 @@ const VS_TYPE_LABELS = {
   pileStackPiece: 'Pile Stack Piece',
   route: 'Route Path',
   slotRect: 'Slot Body',
-  slotLabel: 'Slot Label',
   slotGear: 'Slot Gear Icon',
   slotDelete: 'Slot Delete Icon',
   carryIndicator: 'Carry Indicator',
@@ -4948,14 +4917,6 @@ function applyVisualStyles(typeKey) {
         r.dash([V.dashOn, V.dashOff]);
         r.shadowOpacity(V.shadowOpacity);
         r.fill(V.fill);
-      });
-      uiLayer.batchDraw();
-      break;
-    }
-    case 'slotLabel': {
-      stage.find('.slot-label').forEach(t => {
-        t.fontSize(V.fontSize); t.fill(V.color);
-        t.y(V.offsetY); t.width(V.width); t.x(-V.width / 2);
       });
       uiLayer.batchDraw();
       break;
