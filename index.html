@@ -439,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#132';
+const APP_VERSION = '0.1.2#133';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -1931,8 +1931,16 @@ function ensureRouteSides(route) {
   const fn = nodes.find(n => n.id === route.fromId);
   const tn = nodes.find(n => n.id === route.toId);
   if (!fn || !tn) return;
-  if (!route.fromSide) route.fromSide = closestSideTo(fn, tn);
-  if (!route.toSide)   route.toSide   = closestSideTo(tn, fn);
+  if (!route.fromSide) {
+    const dx = tn.x - fn.x;
+    route.fromSide = Math.abs(dx) < 1 ? (tn.y < fn.y ? 'top' : 'bottom') : (dx > 0 ? 'right' : 'left');
+  }
+  if (!route.toSide) {
+    const dy = fn.y - tn.y;
+    route.toSide = Math.abs(tn.x - fn.x) < 1 || Math.abs(dy) >= 1
+      ? (dy > 0 ? 'bottom' : 'top')
+      : (fn.x < tn.x ? 'left' : 'right');
+  }
 }
 function getPileAnchors(nodeId) {
   const node = nodes.find(n => n.id === nodeId);
@@ -2275,7 +2283,14 @@ stage.on('mousemove', () => {
   const p = getWorldPointer(); if (!p) return;
   let tx = p.x, ty = p.y;
   const hitNode = nodeAtPoint(p.x, p.y, lineDraft.fromNode.id);
-  if (hitNode) { tx = hitNode.x; ty = hitNode.y; }
+  if (hitNode) {
+    // Use the last-segment approach direction as reference for pointOnPerimeter.
+    // orthoPathData goes horizontal first then vertical, so the final leg is always
+    // vertical (or horizontal when same height). Reference = bend-point of the path.
+    const refX = Math.abs(lineDraft.fromY - hitNode.y) < 1 ? lineDraft.fromX : hitNode.x;
+    const perim = pointOnPerimeter(hitNode, refX, lineDraft.fromY);
+    tx = perim.x; ty = perim.y;
+  }
   lineDraft.path.data(orthoPathData(lineDraft.fromX, lineDraft.fromY, tx, ty));
   const ddx = tx - lineDraft.fromX, ddy = ty - lineDraft.fromY;
   const angle = Math.abs(ddy) < 1 ? (ddx >= 0 ? 0 : 180) : (ddy >= 0 ? 90 : -90);
