@@ -537,6 +537,11 @@ const VISUAL_STYLES_DEFAULT = {
     fill: '#878787',
     shadowOpacity: 0.6,
   },
+  slotHover: {
+    strokeColor: '#ffffff',
+    strokeWidth: 3,
+    fill: '#4a4a4a',
+  },
   slotLabel: {
     fontSize: 10,
     color: 'rgba(255,255,255,0.5)',
@@ -1632,12 +1637,12 @@ function drawWorker(w) {
       if (slot === _prevSnapSlot) return;
       if (_prevSnapSlot) {
         const r = _prevSnapSlot.findOne('Rect');
-        if (r) { r.stroke('#fff'); r.strokeWidth(VISUAL_STYLES.slotRect.strokeWidth); }
+        if (r) { r.stroke('#fff'); r.strokeWidth(VISUAL_STYLES.slotRect.strokeWidth); r.fill(VISUAL_STYLES.slotRect.fill); }
       }
       _prevSnapSlot = slot;
       if (slot) {
         const r = slot.findOne('Rect');
-        if (r) { r.stroke(routeColor()); r.strokeWidth(3); }
+        if (r) { r.stroke(VISUAL_STYLES.slotHover.strokeColor); r.strokeWidth(VISUAL_STYLES.slotHover.strokeWidth); r.fill(VISUAL_STYLES.slotHover.fill); }
       }
       uiLayer.batchDraw();
     };
@@ -4118,6 +4123,7 @@ const VS_TYPE_LABELS = {
   pileStackPiece: 'Pile Stack Piece',
   route: 'Route Path',
   slotRect: 'Slot Body',
+  slotHover: 'Slot Hover',
   slotLabel: 'Slot Label',
   slotGear: 'Slot Gear Icon',
   slotDelete: 'Slot Delete Icon',
@@ -4632,6 +4638,9 @@ function applyVisualStyles(typeKey) {
       uiLayer.batchDraw();
       break;
     }
+    case 'slotHover':
+      // Hover styles are applied dynamically during drag-to-assign, no permanent shape updates needed.
+      break;
     case 'slotLabel': {
       stage.find('.slot-label').forEach(t => {
         t.fontSize(V.fontSize); t.fill(V.color);
