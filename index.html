@@ -439,7 +439,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#133';
+const APP_VERSION = '0.1.2#134';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -696,6 +696,7 @@ const VISUAL_STYLES_DEFAULT = {
   hitboxSlotIcons: {
     pad: 4,
   },
+  hitboxMiniAnchor: {},
 };
 // Deep clone so the live config can be mutated without losing the canonical defaults.
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
@@ -758,6 +759,7 @@ const HITBOX_TYPE_TO_NAMES = {
   hitboxSlot:       ['hitbox-slot'],
   hitboxSlotHover:  ['hover-hit-slot'],
   hitboxSlotIcons:  ['slot-delhit', 'slot-gearhit'],
+  hitboxMiniAnchor: ['mini-anchor'],
 };
 function holdRouteView(routeId) {
   if (routeViewHeld) return;
@@ -4345,10 +4347,11 @@ const VS_TYPE_LABELS = {
   hitboxSlot: 'hitbox-slot',
   hitboxSlotHover: 'hover-hit-slot',
   hitboxSlotIcons: 'slot-delhit / slot-gearhit',
+  hitboxMiniAnchor: 'mini-anchor',
 };
 const VS_OPEN_TYPES = new Set();
 const DECORATION_TYPES = new Set(['building', 'buildingDoor', 'buildingSupport', 'buildingChimney', 'buildingSign', 'tree']);
-const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 'hitboxWorker', 'hitboxTri', 'hitboxSlot', 'hitboxSlotHover', 'hitboxSlotIcons']);
+const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 'hitboxWorker', 'hitboxTri', 'hitboxSlot', 'hitboxSlotHover', 'hitboxSlotIcons', 'hitboxMiniAnchor']);
 
 function gpSwitchTab(tab) {
   gpActiveTab = tab;
