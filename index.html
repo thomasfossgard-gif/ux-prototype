@@ -38,6 +38,22 @@
   .hint { position: absolute; left: 50%; transform: translateX(-50%); color: #bbb; font-size: 26px; pointer-events: none; white-space: nowrap; text-align: center; }
   #version-label { position: absolute; bottom: 12px; right: 16px; color: rgba(0,0,0,0.3); font-size: 15px; font-weight: 500; pointer-events: none; letter-spacing: 0.3px; }
   #tick-indicator { position: absolute; left: -18px; top: 50%; margin-top: -5px; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 2px; pointer-events: none; }
+  #dconsole { position: absolute; top: 12px; left: 12px; width: 380px; max-height: 60vh; background: rgba(14,16,20,0.92); border: 1px solid #2c2f38; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; color: #aaa; z-index: 30; flex-direction: column; }
+  #dconsole:not([hidden]) { display: flex; }
+  #dconsole-header { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #1c1c1c; }
+  #dconsole-header .dconsole-title { font-size: 9px; font-weight: 700; color: #7ab4f5; text-transform: uppercase; letter-spacing: 0.5px; }
+  #dconsole-header input { flex: 1; background: #1a1d23; border: 1px solid #333; color: #ddd; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-family: inherit; }
+  #dconsole-header button { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; }
+  #dconsole-header button:hover { color: #fff; }
+  #dconsole-body { overflow-y: auto; padding: 4px 8px; flex: 1; min-height: 60px; }
+  .dlog-row { display: flex; gap: 8px; line-height: 1.45; white-space: nowrap; }
+  .dlog-row .dlog-tag { color: inherit; opacity: 0.7; min-width: 56px; font-weight: 600; }
+  .dlog-row .dlog-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .dlog-age-0 { color: #fff; }
+  .dlog-age-1 { color: #aaa; }
+  .dlog-age-2 { color: #777; }
+  .dlog-age-3 { color: #555; }
+  .dlog-age-4 { color: #444; }
   #top-center-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 10; }
   #meta-controls { background: #232730; border: 1px solid #333; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; flex-shrink: 0; }
   #meta-controls-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font-size: 10px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #2a2d35; }
@@ -103,6 +119,7 @@
   .vs-type-header:hover { background: #353535; }
   .vs-type-header.dirty { background: rgba(74,144,226,0.08); }
   .vs-type-name { font-size: 12px; color: #ddd; font-weight: 600; text-transform: capitalize; }
+  .vs-type-key { font-size: 10px; color: #555; font-weight: 400; font-family: monospace; text-transform: none; margin-left: 4px; }
   .vs-type-meta { font-size: 10px; color: #666; }
   .vs-type-meta.dirty { color: #7ab4f5; font-weight: 700; }
   .vs-type-arrow { color: #555; font-size: 9px; margin-left: 6px; transition: transform 0.12s; }
@@ -365,7 +382,7 @@
 </div>
 <div id="gp-panel">
   <div id="gp-panel-header">
-    <span>Properties</span>
+    <span id="gp-panel-title">Gameplay</span>
     <button onclick="toggleGpPanel()">&times;</button>
   </div>
   <div id="gp-tab-bar">
@@ -403,6 +420,15 @@
 </div>
 <button id="gp-toggle" onclick="toggleGpPanel()">GAMEPLAY</button>
 <button id="debug-toggle" onclick="toggleDebugPanel()">DEBUG</button>
+<div id="dconsole" hidden>
+  <div id="dconsole-header">
+    <span class="dconsole-title">DEBUG CONSOLE</span>
+    <input id="dconsole-filter" placeholder="filter (tag or text)…" />
+    <button id="dconsole-clear" title="Clear">⌫</button>
+    <button id="dconsole-close" title="Close (')">×</button>
+  </div>
+  <div id="dconsole-body"></div>
+</div>
 <div id="slot-popup" hidden></div>
 <div id="inspect-panel" hidden>
   <button class="close-btn" onclick="closeInspectPanel()">&times;</button>
@@ -440,7 +466,7 @@ const palette = {
     { id: 'dB', kind: 'decoration', color: '#2d5016', shape: 'tree', label: 'Tree' },
   ],
 };
-const APP_VERSION = '0.1.2#142';
+const APP_VERSION = '0.1.2#148';
 
 // ===== VISUAL STYLES =====
 // Single source of truth for the visual properties of every non-menu object type.
@@ -483,12 +509,17 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 0.8,
   },
   route: {
-    color: 'rgba(255,255,255,0.7)',
+    color: '#ff0000',
+    ghostColor: 'rgba(255,255,255,0.29)',
     strokeWidth: 4,
-    dashOn: 8,
-    dashOff: 6,
+    dashOn: 4,
+    dashOff: 0,
     cornerRadius: 8,
     animSpeed: 10,
+  },
+  ghostFade: {
+    inMs: 500,
+    outMs: 500,
   },
   miniAnchor: {
     strokeColor: 'rgba(222,222,222,0.85)',
@@ -546,7 +577,7 @@ const VISUAL_STYLES_DEFAULT = {
     strokeWidth: 2,
     dashOn: 5,
     dashOff: 3,
-    fill: 'rgba(135,135,135,0.47)',
+    fill: 'rgba(135,135,135,0.57)',
     shadowOpacity: 0.6,
     hoverStrokeColor: '#ffffff',
     hoverStrokeWidth: 3,
@@ -702,6 +733,13 @@ const VISUAL_STYLES_DEFAULT = {
 const VISUAL_STYLES = JSON.parse(JSON.stringify(VISUAL_STYLES_DEFAULT));
 
 const routeColor = () => VISUAL_STYLES.route.color;
+// Single source of truth for route stroke. Per-route route.color (set via Inspect)
+// takes precedence; ghost view uses its own tunable color. Everyone writing to
+// .routepath stroke should call this resolver.
+function getRouteStroke(route, isGhost) {
+  if (isGhost) return VISUAL_STYLES.route.ghostColor;
+  return (route && route.color) || VISUAL_STYLES.route.color;
+}
 
 let nodes = [];   // { id, templateId, x, y, color, items }
 let routes = [];  // { id, fromId, toId, color, workerId }
@@ -737,8 +775,8 @@ const TOOL_TO_MODE = { select: 'gameInteract', line: 'drawRoutes', delete: 'dele
 let currentMode = 'gameInteract';
 let prevMode = null; // saved game mode while a transient game mode (liftWorker) is active
 const viewFocusStack = []; // ordered list of pushed view-mode names; topmost wins
-function pushViewFocus(view) { viewFocusStack.push(view); applyDebugVisibility(); }
-function popViewFocus()       { viewFocusStack.pop();      applyDebugVisibility(); }
+function pushViewFocus(view) { viewFocusStack.push(view); dlog('view', 'push ' + view + ' (depth=' + viewFocusStack.length + ')'); applyDebugVisibility(); }
+function popViewFocus()       { const v = viewFocusStack.pop(); dlog('view', 'pop  ' + v + ' (depth=' + viewFocusStack.length + ')'); applyDebugVisibility(); }
 
 // "Held" route view — set after a route is created so it stays visible until the
 // user clicks something else (e.g. empty canvas, a worker, a tool). Clicking another
@@ -788,6 +826,7 @@ function getEffectiveView() {
 
 function setMode(name) {
   if (!MODES[name]) return;
+  dlog('mode', 'set ' + currentMode + ' → ' + name);
   currentMode = name;
   applyMode();
 }
@@ -809,11 +848,13 @@ let _hoveredNodeId = null;
 let _anchorHovered = false;
 function enterPileFocus() {
   pileFocusDepth++;
+  dlog('hover', 'enter pile (depth=' + pileFocusDepth + ')');
   if (pileFocusDepth === 1) pushViewFocus('ViewGhost');
 }
 function leavePileFocus() {
   if (pileFocusDepth === 0) return;
   pileFocusDepth--;
+  dlog('hover', 'leave pile (depth=' + pileFocusDepth + ')');
   if (pileFocusDepth === 0) popViewFocus();
 }
 
@@ -1494,12 +1535,14 @@ function drawNode(node) {
   });
   anchorHit.on('mouseenter', () => {
     _anchorHovered = true;
+    dlog('hover', 'enter anchor (' + node.id + ')');
     enterPileFocus();
     const v = getEffectiveView();
     if (v === 'ViewGhost' || v === 'ViewHoverReveal') buildRevealGhosts(false);
   });
   anchorHit.on('mouseleave', () => {
     _anchorHovered = false;
+    dlog('hover', 'leave anchor (' + node.id + ')');
     leavePileFocus();
     const v = getEffectiveView();
     if (v === 'ViewGhost' || v === 'ViewHoverReveal') buildRevealGhosts(false);
@@ -2271,6 +2314,7 @@ function startLineDraft(fromNode) {
   }
   uiLayer.add(path, endA, endB, endBArrow, scrapPreview);
   lineDraft = { fromNode, fromX: from.x, fromY: from.y, path, endA, endB, endBArrow, scrapPreview, previewColor };
+  dlog('draft', 'start from ' + fromNode.id);
   pushViewFocus('ViewGhost');
   uiLayer.find('.slot').forEach(s => {
     s.findOne('Rect')?.visible(false);
@@ -2282,6 +2326,7 @@ function startLineDraft(fromNode) {
 }
 function cancelLineDraft() {
   if (!lineDraft) return;
+  dlog('draft', 'end');
   lineDraft.path.destroy();
   lineDraft.endA.destroy();
   lineDraft.endB.destroy();
@@ -2356,9 +2401,23 @@ stage.on('mouseup', () => {
 function setSlotIconsVisible(route, visible) {
   const slotGrp = uiLayer.findOne('#slot_' + route.id);
   if (!slotGrp) return;
-  slotGrp.findOne('.slot-gear')?.visible(visible);
-  slotGrp.findOne('.slot-gearhit')?.visible(visible);
-  ['.slot-delbg', '.slot-del', '.slot-delhit'].forEach(n => slotGrp.findOne(n)?.visible(visible));
+  dlog('slot', (visible ? 'show' : 'hide') + ' icons (' + route.id + ')');
+  const VG = VISUAL_STYLES.ghostFade;
+  const VSG = VISUAL_STYLES.slotGear, VSD = VISUAL_STYLES.slotDelete;
+  const ms = visible ? VG.inMs : VG.outMs;
+  // Visible icons fade between 0 and their resting opacity. Hit areas + delbg are
+  // transparent already so just toggle visible() — opacity tween would be invisible.
+  const fadeTargets = [
+    { node: slotGrp.findOne('.slot-gear'), shown: VSG.restOpacity },
+    { node: slotGrp.findOne('.slot-del'),  shown: VSD.restOpacity },
+  ];
+  fadeTargets.forEach(({ node, shown }) => {
+    if (!node) return;
+    if (visible) { node.visible(true); fadeNode(node, shown, ms); }
+    else { fadeNode(node, 0, ms, () => node.visible(false)); }
+  });
+  // Hit areas + delete bg: keep visibility toggle synchronous (no visible fade)
+  ['.slot-gearhit', '.slot-delbg', '.slot-delhit'].forEach(n => slotGrp.findOne(n)?.visible(visible));
   if (!visible) hideFilterGhost(route);
   uiLayer.batchDraw();
 }
@@ -2408,6 +2467,7 @@ function hideFilterGhost(route) {
 function enterRouteHover(route) {
   if (route._hoverViewActive) return;
   route._hoverViewActive = true;
+  dlog('hover', 'enter route (' + route.id + ')');
   pushViewFocus('ViewGhost');
   setSlotIconsVisible(route, true);
 }
@@ -2415,6 +2475,7 @@ function exitRouteHover(route) {
   if (!route._hoverViewActive) return;
   if (_filterPanel && _filterPanel.route.id === route.id) return;
   route._hoverViewActive = false;
+  dlog('hover', 'leave route (' + route.id + ')');
   setSlotIconsVisible(route, false);
   popViewFocus();
 }
@@ -2611,7 +2672,7 @@ function drawRoute(route) {
   const VR = VISUAL_STYLES.route;
   const path = new Konva.Path({
     data: routePathData(route),
-    stroke: routeColor(), strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
+    stroke: getRouteStroke(route, false), strokeWidth: VR.strokeWidth, lineCap: 'butt', lineJoin: 'round',
     dash: [VR.dashOn, VR.dashOff], dashOffset: 0, name: 'routepath'
   });
   // Wide, nearly-invisible path so route is hoverable even when routepath is hidden.
@@ -3559,6 +3620,11 @@ document.addEventListener('keydown', e => {
     const all = Object.values(HITBOX_TYPE_TO_NAMES).flat();
     refreshHitboxOverlay(all);
   }
+  if (e.key === "'" && !e.repeat) {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    toggleDebugConsole();
+  }
 });
 document.addEventListener('keyup', e => {
   if (e.key === 'h' || e.key === 'H') refreshHitboxOverlay();
@@ -3719,7 +3785,52 @@ function applyHitboxVisibility() {
 }
 
 let debugPreviewing = false; // true while the panel is overriding the live view
+
+// Generic fade helper — tween a node's opacity to target. Cancels any running fade
+// on the same node first. Stores the tween on `node._fadeTween` to avoid stacking.
+function fadeNode(node, target, ms, onComplete) {
+  if (!node) { if (onComplete) onComplete(); return; }
+  if (node._fadeTween) { node._fadeTween.destroy(); node._fadeTween = null; }
+  if (node.opacity() === target) { if (onComplete) onComplete(); return; }
+  if (ms <= 0) {
+    node.opacity(target);
+    if (onComplete) onComplete();
+    return;
+  }
+  node._fadeTween = new Konva.Tween({
+    node, duration: ms / 1000, opacity: target,
+    onFinish: () => { node._fadeTween = null; if (onComplete) onComplete(); },
+  });
+  node._fadeTween.play();
+}
+
+// Ghost fade — tween revealLayer.opacity on enter/exit so ghost objects don't pop in/out.
+let _ghostActive = false;
+let _ghostTween = null;
+function fadeGhostTo(target, onComplete) {
+  if (_ghostTween) { _ghostTween.destroy(); _ghostTween = null; }
+  if (revealLayer.opacity() === target) { if (onComplete) onComplete(); return; }
+  const VG = VISUAL_STYLES.ghostFade;
+  const dur = (target === 1 ? VG.inMs : VG.outMs) / 1000;
+  if (dur <= 0) {
+    revealLayer.opacity(target);
+    revealLayer.batchDraw();
+    if (onComplete) onComplete();
+    return;
+  }
+  _ghostTween = new Konva.Tween({
+    node: revealLayer,
+    duration: dur,
+    opacity: target,
+    onFinish: () => { _ghostTween = null; if (onComplete) onComplete(); },
+  });
+  _ghostTween.play();
+}
+
 function buildRevealGhosts(includeRoutes = true) {
+  const wasActive = _ghostActive;
+  _ghostActive = true;
+  if (!wasActive) dlog('ghost', 'build (fade-in)');
   revealLayer.destroyChildren();
   nodeLayer.find('.node').forEach(grp => {
     const isHovered = grp.id() === _hoveredNodeId;
@@ -3766,19 +3877,32 @@ function buildRevealGhosts(includeRoutes = true) {
     }
   });
   revealLayer.batchDraw();
+  if (!wasActive) {
+    revealLayer.opacity(0);
+    fadeGhostTo(1);
+  }
 }
 function clearRevealGhosts() {
-  revealLayer.destroyChildren();
-  revealLayer.batchDraw();
   routes.forEach(route => {
-    edgeLayer.findOne('#' + route.id)?.findOne('.routepath')?.stroke(routeColor());
+    edgeLayer.findOne('#' + route.id)?.findOne('.routepath')?.stroke(getRouteStroke(route, false));
+  });
+  if (!_ghostActive) {
+    revealLayer.destroyChildren();
+    revealLayer.batchDraw();
+    return;
+  }
+  _ghostActive = false;
+  dlog('ghost', 'clear (fade-out)');
+  fadeGhostTo(0, () => {
+    revealLayer.destroyChildren();
+    revealLayer.batchDraw();
   });
 }
 
 // Hover reveal depth — both pile hover and worker hover push ViewHoverReveal.
 let workerHoverDepth = 0;
-function enterWorkerHover() { workerHoverDepth++; if (workerHoverDepth === 1) pushViewFocus('ViewGhost'); }
-function exitWorkerHover()  { if (workerHoverDepth === 0) return; workerHoverDepth--; if (workerHoverDepth === 0) popViewFocus(); }
+function enterWorkerHover() { workerHoverDepth++; dlog('hover', 'enter worker (depth=' + workerHoverDepth + ')'); if (workerHoverDepth === 1) pushViewFocus('ViewGhost'); }
+function exitWorkerHover()  { if (workerHoverDepth === 0) return; workerHoverDepth--; dlog('hover', 'leave worker (depth=' + workerHoverDepth + ')'); if (workerHoverDepth === 0) popViewFocus(); }
 
 // Resolve the effective vis state for a type in a given view, following 'inherit'
 // back to ViewDefault. Returns 'visible' | 'hidden' | 'highlighted'.
@@ -3788,7 +3912,62 @@ function resolveVisState(viewKey, typeKey) {
   return state;
 }
 
+// ===== DEBUG CONSOLE =====
+// Ring buffer of semantic visual events. Toggle with '. Filter via input.
+// Newest entries are bright white, older fade to grey by group (logs within
+// the same ~50ms cluster share a group).
+const _dlogBuf = [];
+const DLOG_MAX = 200;
+let _dlogGroup = 0;
+let _dlogLastTime = 0;
+let _dconsoleOn = false;
+let _dconsoleFilter = '';
+let _dconsoleScheduled = false;
+function dlog(tag, msg) {
+  const now = performance.now();
+  if (now - _dlogLastTime > 50) _dlogGroup++;
+  _dlogLastTime = now;
+  _dlogBuf.push({ tag, msg, group: _dlogGroup });
+  if (_dlogBuf.length > DLOG_MAX) _dlogBuf.shift();
+  if (_dconsoleOn && !_dconsoleScheduled) {
+    _dconsoleScheduled = true;
+    requestAnimationFrame(() => { _dconsoleScheduled = false; renderDebugConsole(); });
+  }
+}
+function renderDebugConsole() {
+  const body = document.getElementById('dconsole-body');
+  if (!body) return;
+  const flt = _dconsoleFilter.toLowerCase();
+  const filtered = flt
+    ? _dlogBuf.filter(e => e.tag.toLowerCase().includes(flt) || e.msg.toLowerCase().includes(flt))
+    : _dlogBuf;
+  // Newest at top. Age = how many groups behind the latest visible group this entry is.
+  const latestGroup = filtered.length ? filtered[filtered.length - 1].group : 0;
+  const rows = [];
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    const e = filtered[i];
+    const age = Math.min(4, latestGroup - e.group);
+    rows.push(`<div class="dlog-row dlog-age-${age}"><span class="dlog-tag">${e.tag}</span><span class="dlog-msg">${e.msg}</span></div>`);
+  }
+  body.innerHTML = rows.join('');
+}
+function toggleDebugConsole() {
+  _dconsoleOn = !_dconsoleOn;
+  const el = document.getElementById('dconsole');
+  if (el) el.hidden = !_dconsoleOn;
+  if (_dconsoleOn) renderDebugConsole();
+}
+{
+  const filter = document.getElementById('dconsole-filter');
+  const clear  = document.getElementById('dconsole-clear');
+  const close  = document.getElementById('dconsole-close');
+  if (filter) filter.addEventListener('input', e => { _dconsoleFilter = e.target.value; renderDebugConsole(); });
+  if (clear)  clear.addEventListener('click', () => { _dlogBuf.length = 0; renderDebugConsole(); });
+  if (close)  close.addEventListener('click', () => { _dconsoleOn = false; const el = document.getElementById('dconsole'); if (el) el.hidden = true; });
+}
+
 function applyDebugVisibility() {
+  dlog('apply', 'view=' + getEffectiveView());
   // The Debug → View Modes tab is purely about visual states. While the user is
   // previewing a specific view via the panel, that view drives the live display.
   // Otherwise, the effective view (game mode default + viewFocusStack) does.
@@ -3814,12 +3993,13 @@ function applyDebugVisibility() {
     VISUAL_TYPES.forEach(t => t.apply(resolveVisState('ViewGhost', t.key) !== 'hidden'));
     buildRevealGhosts(false);
     routes.forEach(route => {
+      const stroke = getRouteStroke(route, true);
       const routeGrp = edgeLayer.findOne('#' + route.id);
-      if (routeGrp) { const rp = routeGrp.findOne('.routepath'); rp.stroke('rgba(255,255,255,0.55)'); rp.visible(true); }
+      if (routeGrp) { const rp = routeGrp.findOne('.routepath'); rp.stroke(stroke); rp.visible(true); }
       const slotGrp = uiLayer.findOne('#slot_' + route.id);
       if (slotGrp) {
         const rect = slotGrp.findOne('Rect');
-        rect.stroke('rgba(255,255,255,0.55)'); rect.visible(true);
+        rect.stroke(stroke); rect.visible(true);
       }
     });
     edgeLayer.batchDraw();
@@ -3830,6 +4010,7 @@ function applyDebugVisibility() {
   if (!VIEW_MODES[view]) return;
   VISUAL_TYPES.forEach(t => t.apply(resolveVisState(view, t.key) !== 'hidden'));
 }
+
 
 // Instance state catalog — drives the Instance States section. Each entry is a
 // (type, state) pair with a function that returns the matching live instances.
@@ -4347,6 +4528,7 @@ const VS_TYPE_LABELS = {
   speechBubble: 'Speech Bubble',
   tickIndicator: 'Tick Indicator',
   miniAnchor: 'Mini Anchor',
+  ghostFade: 'Ghost Fade',
   trafficLightMan: 'Traffic-Light Man',
   hintText: 'Hint Text',
   assignTriangle: 'Assign Triangle',
@@ -4378,6 +4560,9 @@ const HITBOX_TYPES = new Set(['hitboxPile', 'hitboxAnchor', 'hitboxRouteHover', 
 function gpSwitchTab(tab) {
   gpActiveTab = tab;
   document.querySelectorAll('.gp-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.gpTab === tab));
+  const activeBtn = document.querySelector('.gp-tab[data-gp-tab="' + tab + '"]');
+  const titleEl = document.getElementById('gp-panel-title');
+  if (activeBtn && titleEl) titleEl.textContent = activeBtn.textContent;
   const showGameplay = tab === 'gameplay';
   document.getElementById('gp-content').hidden = !showGameplay;
   document.getElementById('gp-visuals-pane').hidden = tab !== 'visuals';
@@ -4621,7 +4806,7 @@ function vsRenderTypeRow(typeKey) {
   return `
     <div class="vs-type-row">
       <div class="vs-type-header ${dirty ? 'dirty' : ''}" data-type="${typeKey}">
-        <span class="vs-type-name">${VS_TYPE_LABELS[typeKey]}</span>
+        <span class="vs-type-name">${VS_TYPE_LABELS[typeKey]} <span class="vs-type-key">${typeKey}</span></span>
         <span style="display:flex;align-items:center;gap:6px">
           <span class="vs-type-meta ${dirty ? 'dirty' : ''}">${meta}</span>
           <span class="vs-type-arrow ${open ? 'open' : ''}">▶</span>
@@ -4916,15 +5101,17 @@ function applyVisualStyles(typeKey) {
       break;
     }
     case 'route': {
-      const rc = routeColor();
+      const isGhost = (getEffectiveView() === 'ViewGhost' || getEffectiveView() === 'ViewHoverReveal');
       routes.forEach(j => {
         const grp = edgeLayer.findOne('#' + j.id); if (!grp) return;
         const pd = routePathData(j);
         const rp = grp.findOne('.routepath');
-        if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); rp.stroke(rc); }
+        const stroke = getRouteStroke(j, isGhost);
+        if (rp) { rp.data(pd); rp.strokeWidth(V.strokeWidth); rp.dash([V.dashOn, V.dashOff]); rp.stroke(stroke); }
         grp.findOne('.hover-hit-route')?.data(pd);
+        const slot = uiLayer.findOne('#slot_' + j.id);
+        if (slot) { const r = slot.findOne('.slot-rect'); if (r) { r.stroke(stroke); r.shadowColor(stroke); } }
       });
-      stage.find('.slot-rect').forEach(r => { r.stroke(rc); r.shadowColor(rc); });
       edgeLayer.batchDraw();
       uiLayer.batchDraw();
       break;
